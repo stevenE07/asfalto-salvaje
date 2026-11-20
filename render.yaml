@@ -1,0 +1,14 @@
+# Blueprint de Render: crea el servicio web automáticamente.
+services:
+  - type: web
+    name: asfalto-salvaje
+    runtime: node
+    plan: free
+    region: virginia
+    buildCommand: npm install --omit=dev
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"

@@ -1,0 +1,18 @@
+{
+  "name": "asfalto-salvaje",
+  "version": "1.0.0",
+  "description": "Juego de carreras de eliminación multijugador (hasta 8 jugadores) con celulares como control.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.2",
+    "qrcode": "^1.5.4",
+    "ws": "^8.18.0"
+  }
+}
