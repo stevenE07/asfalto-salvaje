@@ -2,200 +2,291 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#14121f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <title>Asfalto Salvaje</title>
-<meta name="description" content="Carreras de eliminación para 1 a 8 jugadores. Tu celular es el control.">
+<meta name="description" content="Carreras de eliminación online para 1 a 8 jugadores. Cada uno juega desde su celular o compu.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='6' y='16' width='52' height='32' rx='10' fill='%23ec3b40'/%3E%3Crect x='22' y='22' width='18' height='20' rx='4' fill='%231c2633'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #14121f; --panel: rgba(18, 14, 34, 0.86); --panel-2: rgba(255,255,255,0.06);
-    --line: rgba(255,255,255,0.12); --text: #f4f1ff; --muted: #a9a3c4;
-    --accent: #ffd23f; --accent-2: #ff5c7a; --ok: #3ff07a;
+    --bg: #14121f; --panel: rgba(18, 14, 34, 0.9); --panel-2: rgba(255,255,255,0.06);
+    --line: rgba(255,255,255,0.13); --text: #f4f1ff; --muted: #a9a3c4;
+    --accent: #ffd23f; --accent-2: #ff5c7a; --ok: #3ff07a; --c: #ffd23f;
   }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: 'Rubik', system-ui, sans-serif; }
-  canvas#game { position: fixed; inset: 0; display: block; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: 'Rubik', system-ui, sans-serif; overscroll-behavior: none; }
+  canvas#game { position: fixed; inset: 0; display: block; touch-action: none; }
   button { font: inherit; color: inherit; cursor: pointer; }
+  input { font: inherit; }
   .hidden { display: none !important; }
 
-  .screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; }
-  #lobby { background: radial-gradient(ellipse at center, rgba(20,18,31,0.35), rgba(20,18,31,0.8)); overflow: auto; }
-  .lobby-card {
-    width: min(1280px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 24px;
-    padding: clamp(16px, 2.2vw, 32px); backdrop-filter: blur(6px); box-shadow: 0 30px 80px rgba(0,0,0,0.5);
-    max-height: 100%; overflow: auto;
-  }
-  .brand { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; margin-bottom: clamp(12px, 2vh, 22px); }
-  .logo { font-family: 'Bungee', 'Rubik', sans-serif; font-size: clamp(30px, 4.2vw, 60px); line-height: 1; letter-spacing: 1px; color: #fff; text-shadow: 0 4px 0 #b32244, 0 8px 18px rgba(0,0,0,0.5); }
-  .logo b { color: var(--accent); font-weight: 400; }
-  .tag { color: var(--muted); font-size: clamp(14px, 1.2vw, 18px); }
-
-  .lobby-grid { display: grid; grid-template-columns: minmax(300px, 0.9fr) 1.4fr; gap: clamp(14px, 2vw, 28px); }
-  @media (max-width: 900px) { .lobby-grid { grid-template-columns: 1fr; } }
-
-  .join-box { background: var(--panel-2); border: 1px solid var(--line); border-radius: 18px; padding: 18px; display: flex; gap: 18px; align-items: center; }
-  #qr { width: clamp(120px, 12vw, 190px); aspect-ratio: 1; background: #fff; border-radius: 12px; padding: 6px; flex-shrink: 0; }
-  .join-text { min-width: 0; }
-  .step { color: var(--muted); font-size: 15px; margin-top: 6px; }
-  .url { font-weight: 700; font-size: clamp(16px, 1.5vw, 22px); word-break: break-all; color: #fff; }
-  .code { font-family: 'Bungee', sans-serif; font-size: clamp(40px, 5vw, 72px); letter-spacing: 8px; color: var(--accent); line-height: 1.05; }
-
-  .settings { margin-top: 18px; display: grid; gap: 14px; }
-  h3 { margin: 0 0 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); font-weight: 600; }
-  .modes, .targets { display: flex; gap: 8px; flex-wrap: wrap; }
-  .mode, .target, .ghost {
-    background: var(--panel-2); border: 2px solid var(--line); border-radius: 12px; padding: 10px 14px; font-weight: 600; font-size: 16px;
-    transition: transform .12s, border-color .12s, background .12s;
-  }
-  .mode:hover, .target:hover, .ghost:hover:not(:disabled) { transform: translateY(-2px); border-color: rgba(255,255,255,0.3); }
-  .mode.sel, .target.sel { border-color: var(--accent); background: rgba(255,210,63,0.14); color: #fff; }
-  .mode-icon { margin-right: 6px; }
-  #modeDesc { color: var(--muted); margin: 8px 0 0; font-size: 15px; min-height: 2.4em; }
-  .target { min-width: 64px; font-family: 'Bungee', sans-serif; font-weight: 400; }
-
-  .players h2 { margin: 0 0 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); font-weight: 600; }
-  .slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-  @media (max-width: 640px) { .slots { grid-template-columns: repeat(2, 1fr); } }
-  .slot {
-    position: relative; min-height: clamp(96px, 13vh, 128px); border-radius: 14px; padding: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center;
-    background: linear-gradient(160deg, color-mix(in srgb, var(--c) 30%, transparent), rgba(255,255,255,0.03)); border: 2px solid var(--c);
-    animation: pop .25s ease-out;
-  }
-  .slot.empty { border: 2px dashed var(--line); background: transparent; animation: none; }
-  .slot-wait { color: rgba(255,255,255,0.3); font-size: 14px; }
-  .mini-car { width: 64px; height: 36px; transform: rotate(-90deg); margin: 6px 0; }
-  .slot-name { font-weight: 700; font-size: 16px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .slot-sub { font-size: 12px; color: var(--muted); }
-  .slot-x { position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; border-radius: 50%; border: none; background: rgba(0,0,0,0.4); font-size: 13px; }
-  .slot-x:hover { background: var(--accent-2); }
-  .vip { font-size: 14px; }
-  @keyframes pop { from { transform: scale(0.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-
-  .row-btns { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
-  .ghost:disabled { opacity: 0.4; cursor: default; }
-  .bottom { display: flex; gap: 20px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-top: 18px; border-top: 1px solid var(--line); padding-top: 18px; }
-  .btn-start {
-    font-family: 'Bungee', sans-serif; font-size: clamp(22px, 2.2vw, 32px); padding: 14px 40px; border: none; border-radius: 16px;
-    background: linear-gradient(180deg, #ffe066, #ffb020); color: #2a1600; box-shadow: 0 6px 0 #b86b00, 0 12px 30px rgba(255,180,0,0.35);
-    transition: transform .1s, box-shadow .1s;
-  }
-  .btn-start:hover:not(:disabled) { transform: translateY(-2px); }
-  .btn-start:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 2px 0 #b86b00; }
-  .btn-start:disabled { filter: grayscale(1); opacity: 0.5; cursor: default; }
-  #startHint { color: var(--muted); margin: 0; font-size: 15px; }
-  #startHint.flash { animation: flash .8s; }
-  @keyframes flash { 0%, 50% { color: var(--accent-2); transform: scale(1.04); } }
-
-  .howto { margin-top: 14px; color: var(--muted); font-size: 15px; }
-  .howto summary { cursor: pointer; color: var(--text); font-weight: 600; }
-  .howto ul { margin: 8px 0 0; padding-left: 20px; line-height: 1.6; }
-  .howto b { color: var(--text); }
-
-  .overlay { background: rgba(10, 8, 20, 0.45); pointer-events: none; }
-  .overlay .card { pointer-events: auto; }
+  .screen { position: fixed; inset: 0; display: flex; padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .screen > * { margin: auto; }
+  .backdrop { background: radial-gradient(ellipse at center, rgba(20,18,31,0.4), rgba(20,18,31,0.85)); }
   .card {
-    width: min(640px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 22px; padding: 26px 28px;
-    box-shadow: 0 30px 80px rgba(0,0,0,0.5); animation: pop .3s ease-out; backdrop-filter: blur(6px);
+    width: min(1180px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 24px;
+    padding: clamp(14px, 2.2vw, 30px); backdrop-filter: blur(6px); box-shadow: 0 30px 80px rgba(0,0,0,0.5);
   }
-  .card h2 { font-family: 'Bungee', sans-serif; font-weight: 400; font-size: clamp(24px, 3vw, 40px); margin: 0 0 16px; text-align: center; line-height: 1.15; }
-  .ro-row, .mo-row { display: grid; grid-template-columns: 18px 1fr 44px 1.3fr 64px; gap: 12px; align-items: center; padding: 7px 0; font-size: 18px; }
-  .mo-row { grid-template-columns: 40px 18px 1fr 64px; font-size: 20px; }
-  .mo-row.first { font-size: 26px; font-weight: 700; }
-  .mo-pos { font-size: 26px; text-align: center; }
-  .ro-dot { width: 16px; height: 16px; border-radius: 50%; }
+  .logo { font-family: 'Bungee', 'Rubik', sans-serif; font-size: clamp(30px, 5vw, 60px); line-height: 1; letter-spacing: 1px; color: #fff; text-shadow: 0 4px 0 #b32244, 0 8px 18px rgba(0,0,0,0.5); }
+  .logo b { color: var(--accent); font-weight: 400; }
+  .tag { color: var(--muted); font-size: clamp(14px, 1.3vw, 18px); margin: 8px 0 0; }
+  label, h3 { display: block; margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); font-weight: 600; }
+  .field { width: 100%; padding: 13px 15px; border-radius: 14px; border: 2px solid var(--line); background: rgba(0,0,0,0.25); color: var(--text); font-size: 20px; outline: none; }
+  .field:focus { border-color: var(--accent); }
+  .big {
+    font-family: 'Bungee', sans-serif; font-size: clamp(18px, 2vw, 26px); padding: 13px 26px; border: none; border-radius: 16px;
+    background: linear-gradient(180deg, #ffe066, #ffb020); color: #2a1600; box-shadow: 0 5px 0 #b86b00, 0 10px 26px rgba(255,180,0,0.3);
+    transition: transform .1s, box-shadow .1s; white-space: nowrap;
+  }
+  .big.alt { background: linear-gradient(180deg, #7fd0ff, #3a8dff); color: #04203f; box-shadow: 0 5px 0 #1d5bb0, 0 10px 26px rgba(60,140,255,0.3); }
+  .big:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 2px 0 #b86b00; }
+  .big:disabled { filter: grayscale(1); opacity: 0.45; cursor: default; }
+  .ghost { background: var(--panel-2); border: 2px solid var(--line); border-radius: 12px; padding: 9px 14px; font-weight: 600; font-size: 15px; transition: border-color .12s, transform .12s; }
+  .ghost:hover:not(:disabled) { border-color: rgba(255,255,255,0.35); }
+  .ghost:disabled { opacity: .4; cursor: default; }
+  .ghost.sel { border-color: var(--accent); background: rgba(255,210,63,0.15); }
+  .link { background: none; border: none; color: var(--muted); text-decoration: underline; padding: 6px; font-size: 15px; }
+  .err { color: #ff7186; font-weight: 600; min-height: 1.3em; text-align: center; }
+
+  /* ---------- inicio ---------- */
+  .home-card { width: min(520px, 100%); display: grid; gap: 14px; text-align: center; }
+  .home-card .field { text-align: center; }
+  .or { color: var(--muted); font-size: 14px; display: flex; align-items: center; gap: 10px; }
+  .or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+  .join-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+  #codeIn { font-family: 'Bungee', sans-serif; letter-spacing: 8px; text-transform: uppercase; font-size: 26px; }
+
+  /* ---------- lobby ---------- */
+  .lob-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; padding-right: 96px; }
+  @media (min-width: 1300px) { .lob-head { padding-right: 0; } }
+  .lob-head .logo { font-size: clamp(24px, 3.4vw, 44px); }
+  .lob-head .spacer { flex: 1; }
+  .lobby-grid { display: grid; grid-template-columns: minmax(280px, 0.9fr) 1.4fr; gap: clamp(14px, 2vw, 26px); }
+  .join-box { background: var(--panel-2); border: 1px solid var(--line); border-radius: 18px; padding: 16px; display: flex; gap: 16px; align-items: center; }
+  #qr { width: clamp(110px, 11vw, 170px); aspect-ratio: 1; background: #fff; border-radius: 12px; padding: 6px; flex-shrink: 0; }
+  .code { font-family: 'Bungee', sans-serif; font-size: clamp(38px, 5vw, 66px); letter-spacing: 8px; color: var(--accent); line-height: 1.05; }
+  .url { font-weight: 700; font-size: clamp(13px, 1.2vw, 17px); overflow-wrap: anywhere; color: var(--muted); }
+  .share-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .settings { margin-top: 16px; display: grid; gap: 14px; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  #modeDesc { color: var(--muted); margin: 8px 0 0; font-size: 15px; }
+  .slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .slot {
+    position: relative; min-height: 104px; border-radius: 14px; padding: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-align: center;
+    background: linear-gradient(160deg, color-mix(in srgb, var(--c) 30%, transparent), rgba(255,255,255,0.03)); border: 2px solid var(--c); animation: pop .25s ease-out;
+  }
+  .slot.me { box-shadow: 0 0 0 3px #fff inset; }
+  .slot.off { opacity: .5; }
+  .slot.empty { border: 2px dashed var(--line); background: transparent; animation: none; color: rgba(255,255,255,0.3); font-size: 14px; }
+  .mini-car { width: 56px; height: 32px; transform: rotate(-90deg); margin: 6px 0; }
+  .slot-name { font-weight: 700; font-size: 15px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .slot-sub { font-size: 12px; color: var(--muted); }
+  .you { position: absolute; top: 5px; left: 6px; font-size: 11px; font-weight: 800; background: #fff; color: #111; border-radius: 6px; padding: 1px 5px; }
+  .lob-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .bottom { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-top: 16px; border-top: 1px solid var(--line); padding-top: 16px; }
+  #startHint { color: var(--muted); margin: 0; font-size: 15px; flex: 1; min-width: 200px; }
+  .howto { margin-top: 12px; color: var(--muted); font-size: 14px; }
+  .howto summary { cursor: pointer; color: var(--text); font-weight: 600; }
+  .howto ul { margin: 8px 0 0; padding-left: 20px; line-height: 1.55; }
+  .howto b { color: var(--text); }
+  @keyframes pop { from { transform: scale(0.88); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+  @media (max-width: 860px) {
+    .lobby-grid { grid-template-columns: 1fr; }
+    .slots { grid-template-columns: repeat(4, 1fr); gap: 6px; }
+    .slot { min-height: 82px; padding: 6px 4px; }
+    .mini-car { width: 44px; height: 26px; margin: 4px 0; }
+    .slot-name { font-size: 13px; }
+    .slot-sub { display: none; }
+  }
+  @media (max-width: 520px) {
+    #qr { display: none; }
+    .join-box { padding: 12px; }
+  }
+  @media (orientation: landscape) and (max-height: 520px) {
+    .card { padding: 12px 16px; }
+    .lob-head { margin-bottom: 8px; }
+    .lob-head .logo { font-size: 24px; }
+    .lobby-grid { grid-template-columns: 1fr 1.3fr; gap: 12px; }
+    #qr { display: none; }
+    .code { font-size: 34px; }
+    .settings { margin-top: 10px; gap: 8px; }
+    .slots { gap: 6px; }
+    .slot { min-height: 70px; }
+    .mini-car { width: 40px; height: 24px; margin: 2px 0; }
+    .slot-sub, .howto { display: none; }
+    .bottom { margin-top: 10px; padding-top: 10px; }
+  }
+
+  /* ---------- en juego ---------- */
+  #controls { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  .zone { position: absolute; pointer-events: auto; touch-action: none; display: flex; align-items: center; justify-content: center; user-select: none; -webkit-user-select: none;
+    border-radius: 24px; border: 3px solid rgba(255,255,255,0.28); background: rgba(10,8,20,0.28); color: rgba(255,255,255,0.85); font-size: 38px; transition: background .06s, transform .06s; }
+  .zone.on { background: color-mix(in srgb, var(--c) 55%, transparent); border-color: var(--c); transform: scale(0.96); }
+  #zL { left: max(12px, env(safe-area-inset-left)); bottom: max(12px, env(safe-area-inset-bottom)); width: min(22vw, 150px); height: min(34vh, 170px); }
+  #zR { left: calc(max(12px, env(safe-area-inset-left)) + min(22vw, 150px) + 10px); bottom: max(12px, env(safe-area-inset-bottom)); width: min(22vw, 150px); height: min(34vh, 170px); }
+  #zF { right: max(16px, env(safe-area-inset-right)); bottom: max(16px, env(safe-area-inset-bottom)); width: min(27vh, 26vw, 170px); height: min(27vh, 26vw, 170px); border-radius: 50%; flex-direction: column; font-size: 42px; }
+  #zF small { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; opacity: .85; }
+  #zF.has { background: radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--c) 70%, #fff), color-mix(in srgb, var(--c) 70%, #000)); border-color: #fff; box-shadow: 0 0 30px color-mix(in srgb, var(--c) 60%, transparent); }
+  @media (orientation: portrait) {
+    #zL, #zR { width: min(30vw, 140px); height: min(22vh, 150px); }
+    #zR { left: calc(max(12px, env(safe-area-inset-left)) + min(30vw, 140px) + 10px); }
+    #zF { width: min(30vw, 140px); height: min(30vw, 140px); }
+  }
+  .pill { position: fixed; left: 50%; transform: translateX(-50%); top: 70px; z-index: 4; background: rgba(10,8,20,0.85); border: 1px solid var(--line); padding: 8px 16px; border-radius: 999px; font-weight: 600; text-align: center; pointer-events: none; max-width: 92vw; }
+  #rotateHint { top: auto; bottom: 50%; }
+
+  .overlay { background: rgba(10, 8, 20, 0.5); z-index: 6; }
+  .res-card { width: min(620px, 100%); }
+  .res-card h2 { font-family: 'Bungee', sans-serif; font-weight: 400; font-size: clamp(22px, 3vw, 38px); margin: 0 0 12px; text-align: center; line-height: 1.15; }
+  .ro-row { display: grid; grid-template-columns: 30px 16px 1fr 40px 1.2fr 58px; gap: 10px; align-items: center; padding: 5px 0; font-size: 17px; }
+  .ro-row.me { background: rgba(255,255,255,0.07); border-radius: 10px; }
+  .ro-pos { text-align: center; font-size: 18px; }
+  .ro-dot { width: 15px; height: 15px; border-radius: 50%; }
   .ro-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ro-gain { color: var(--ok); font-weight: 800; text-align: right; }
-  .ro-bar { height: 12px; background: rgba(255,255,255,0.1); border-radius: 6px; overflow: hidden; }
+  .ro-bar { height: 11px; background: rgba(255,255,255,0.1); border-radius: 6px; overflow: hidden; }
   .ro-bar i { display: block; height: 100%; border-radius: 6px; transition: width 1s cubic-bezier(.2,.8,.2,1); }
   .ro-score { text-align: right; font-weight: 800; font-family: 'Bungee', sans-serif; }
-  .ro-score small { color: var(--muted); font-family: 'Rubik', sans-serif; font-weight: 500; font-size: 13px; }
-  #roNext { text-align: center; color: var(--muted); margin-top: 14px; }
-  .mo-btns { display: flex; gap: 12px; justify-content: center; margin-top: 20px; flex-wrap: wrap; }
-  .mo-btns .btn-start { font-size: 22px; padding: 12px 28px; }
+  .ro-score small { color: var(--muted); font-family: 'Rubik', sans-serif; font-weight: 500; font-size: 12px; }
+  .res-foot { text-align: center; color: var(--muted); margin-top: 12px; display: grid; gap: 10px; justify-items: center; }
+  .res-btns { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  @media (orientation: landscape) and (max-height: 520px) {
+    .res-card { padding: 12px 16px; }
+    .res-card h2 { font-size: 22px; margin-bottom: 6px; }
+    .ro-row { padding: 2px 0; font-size: 15px; }
+    .res-foot { margin-top: 6px; }
+  }
 
-  .corner { position: fixed; top: 12px; right: 12px; display: flex; gap: 8px; z-index: 10; }
-  body.ingame .corner { top: auto; bottom: 44px; right: 12px; opacity: 0.35; }
-  body.ingame .corner:hover { opacity: 1; }
-  .corner button { width: 42px; height: 42px; border-radius: 12px; border: 1px solid var(--line); background: rgba(10,8,20,0.6); font-size: 18px; }
-  #netStatus { position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%); background: #b32244; padding: 10px 18px; border-radius: 12px; font-weight: 600; z-index: 20; }
+  .corner { position: fixed; top: max(10px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); display: flex; gap: 8px; z-index: 8; }
+  .corner button { width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--line); background: rgba(10,8,20,0.6); font-size: 17px; }
+  body.ingame .corner { top: auto; bottom: max(10px, env(safe-area-inset-bottom)); right: 50%; transform: translateX(50%); opacity: .45; }
+  body.ingame.touch .corner { bottom: auto; top: 64px; right: max(10px, env(safe-area-inset-right)); transform: none; }
+  #netStatus { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #b32244; padding: 12px 20px; border-radius: 14px; font-weight: 700; z-index: 20; }
+  #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #2a2442; border: 1px solid var(--line); padding: 10px 18px; border-radius: 12px; font-weight: 600; z-index: 20; }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
 
-<div id="lobby" class="screen">
-  <div class="lobby-card">
-    <header class="brand">
+<!-- Inicio -->
+<div id="home" class="screen backdrop">
+  <div class="card home-card">
+    <div>
       <div class="logo">ASFALTO <b>SALVAJE</b></div>
-      <div class="tag">Carreras de eliminación · 1 a 8 jugadores · tu celular es el control</div>
-    </header>
+      <p class="tag">Carreras de eliminación online · 1 a 8 jugadores · cada uno desde su pantalla</p>
+    </div>
+    <div>
+      <label for="nameIn">Tu nombre</label>
+      <input id="nameIn" class="field" maxlength="12" spellcheck="false" autocomplete="off" placeholder="Piloto">
+    </div>
+    <button id="btnCreate" class="big">CREAR SALA</button>
+    <div class="or">o unite a una sala</div>
+    <div class="join-row">
+      <input id="codeIn" class="field" maxlength="4" autocapitalize="characters" spellcheck="false" autocomplete="off" placeholder="CÓDIGO">
+      <button id="btnJoin" class="big alt">UNIRME</button>
+    </div>
+    <div id="homeErr" class="err"></div>
+    <div><button id="btnTv" class="link">📺 Usar esta pantalla como TV (solo para mirar)</button></div>
+  </div>
+</div>
+
+<!-- Lobby -->
+<div id="lobby" class="screen backdrop hidden">
+  <div class="card">
+    <div class="lob-head">
+      <div class="logo">ASFALTO <b>SALVAJE</b></div>
+      <div class="spacer"></div>
+      <button id="btnLeave" class="ghost">Salir</button>
+    </div>
     <div class="lobby-grid">
       <div>
         <section class="join-box">
           <img id="qr" alt="Código QR para unirse a la sala">
-          <div class="join-text">
-            <div class="step">1 · Desde el celular entrá a</div>
-            <div class="url" id="joinUrl">…</div>
-            <div class="step">2 · Poné este código</div>
+          <div>
+            <label>Código de la sala</label>
             <div class="code" id="roomCode">····</div>
+            <div class="url" id="joinUrl"></div>
+            <div class="share-row">
+              <button id="btnShare" class="ghost">📤 Invitar</button>
+              <button id="btnCopy" class="ghost">🔗 Copiar link</button>
+            </div>
           </div>
         </section>
         <section class="settings">
           <div>
             <h3>Modo de juego</h3>
-            <div id="modes" class="modes"></div>
+            <div id="modes" class="chips"></div>
             <p id="modeDesc"></p>
           </div>
           <div>
             <h3>Puntos para ganar la copa</h3>
-            <div id="targets" class="targets"></div>
+            <div id="targets" class="chips"></div>
           </div>
         </section>
       </div>
-      <section class="players">
-        <h2>Pilotos (máx. 8)</h2>
+      <section>
+        <h3>Pilotos (máx. 8)</h3>
         <div id="slots" class="slots"></div>
-        <div class="row-btns">
+        <div class="lob-actions">
+          <button id="btnColor" class="ghost">🎨 Cambiar mi color</button>
           <button id="btnBot" class="ghost">🤖 Sumar bot</button>
-          <button id="btnKb" class="ghost">⌨️ Jugar con teclado</button>
+          <button id="btnRmBot" class="ghost">Quitar bot</button>
         </div>
         <details class="howto">
           <summary>¿Cómo se juega?</summary>
           <ul>
-            <li>El auto acelera solo. Con <b>◀ ▶</b> doblás; si apretás los dos a la vez, <b>frenás</b>.</li>
+            <li>El auto acelera solo. Doblás con <b>◀ ▶</b> (o las flechas / A D). Los dos a la vez <b>frenan</b>.</li>
             <li>La cámara sigue al que va <b>primero</b>: si te quedás fuera de la pantalla, quedás eliminado.</li>
-            <li>Agarrá las cajas <b>?</b> y usá el power-up con el botón grande: ⚡ Turbo, 🚀 Misil, 💣 Mina, 🛢️ Aceite, 🛡️ Escudo, 💥 Onda.</li>
-            <li>El último en pie gana la ronda. Puntos por ronda: 1.º 3, 2.º 2, 3.º 1 (con menos pilotos, menos puntos).</li>
-            <li>Si una ronda dura mucho llega la <b>muerte súbita</b>: la pantalla se achica.</li>
+            <li>Agarrá las cajas <b>?</b> y usá el power-up con el botón redondo (o ↑ / espacio): ⚡ Turbo, 🚀 Misil, 💣 Mina, 🛢️ Aceite, 🛡️ Escudo, 💥 Onda.</li>
+            <li>El último en pie gana la ronda. Puntos: 1.º 3, 2.º 2, 3.º 1.</li>
+            <li>Si la ronda se alarga llega la <b>muerte súbita</b>: la pantalla se achica.</li>
           </ul>
         </details>
       </section>
     </div>
     <div class="bottom">
       <p id="startHint"></p>
-      <button id="btnStart" class="btn-start">¡EMPEZAR!</button>
+      <button id="btnStart" class="big">¡EMPEZAR!</button>
     </div>
   </div>
 </div>
 
+<!-- Controles táctiles -->
+<div id="controls" class="hidden">
+  <div class="zone" id="zL" data-zone="l">◀</div>
+  <div class="zone" id="zR" data-zone="r">▶</div>
+  <div class="zone" id="zF" data-zone="f"><span id="zFi">·</span><small id="zFl"></small></div>
+</div>
+<div id="statusPill" class="pill hidden"></div>
+<div id="rotateHint" class="pill hidden">📱↻ Girá el celular para ver mejor</div>
+
+<!-- Resultados -->
 <div id="roundOver" class="screen overlay hidden">
-  <div class="card">
+  <div class="card res-card">
     <h2 id="roTitle"></h2>
     <div id="roList"></div>
-    <div id="roNext"></div>
+    <div class="res-foot">
+      <div id="roNext"></div>
+      <button id="btnNext" class="big hidden">SIGUIENTE ▶</button>
+    </div>
   </div>
 </div>
-
 <div id="matchOver" class="screen overlay hidden">
-  <div class="card">
+  <div class="card res-card">
     <h2 id="moTitle"></h2>
     <div id="moList"></div>
-    <div class="mo-btns">
-      <button id="btnAgain" class="btn-start">REVANCHA</button>
-      <button id="btnLobby" class="ghost">Volver al lobby</button>
+    <div class="res-foot">
+      <div class="res-btns" id="moBtns">
+        <button id="btnAgain" class="big">REVANCHA</button>
+        <button id="btnLobby" class="ghost">Volver al lobby</button>
+      </div>
+      <div id="moWait">Esperando al anfitrión 👑…</div>
     </div>
   </div>
 </div>
@@ -204,10 +295,12 @@
   <button id="btnMute" title="Sonido">🔊</button>
   <button id="btnFull" title="Pantalla completa">⛶</button>
 </div>
-<div id="netStatus" class="hidden">Reconectando con el servidor…</div>
+<div id="netStatus" class="hidden">Conectando…</div>
+<div id="toast" class="hidden"></div>
 
-<script src="tracks.js"></script>
+<script src="/shared/common.js"></script>
+<script src="/shared/tracks.js"></script>
 <script src="sfx.js"></script>
-<script src="game.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

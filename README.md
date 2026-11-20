@@ -1,18 +1,23 @@
 # Asfalto Salvaje
 
-Juego de carreras de eliminación con vista desde arriba para **1 a 8 jugadores**.
-La pantalla grande (tele, proyector o compu) muestra la carrera y cada jugador usa
-**su celular como control** desde el navegador, sin instalar nada.
+Juego de carreras de eliminación online, con vista desde arriba, para **1 a 8 jugadores**.
+**Cada jugador ve la carrera en su propia pantalla** (celular o compu) y juega desde ahí,
+así que se puede jugar cada uno desde su casa. No hay que instalar nada: es una página web.
 
 ## Cómo se juega
 
-1. Abrí la página principal en la pantalla grande.
-2. Cada jugador escanea el QR (o entra a `/c`) y pone el código de 4 letras.
-3. El primer celular que entra es el anfitrión 👑: elige el modo y arranca.
-   También se puede empezar desde la pantalla grande con el botón **¡EMPEZAR!**
+1. Uno entra a la página, pone su nombre y toca **CREAR SALA**.
+2. Comparte el link (botón **Invitar**) o el código de 4 letras. Los demás entran y tocan **UNIRME**.
+3. El que creó la sala es el anfitrión 👑: elige el modo, suma bots si quiere y toca **¡EMPEZAR!**
 
-**Controles en el celular:** el auto acelera solo. **◀ ▶** doblan; los dos juntos
-frenan. El botón redondo usa el power-up.
+Opcional: en una tele o proyector se puede abrir la página y elegir
+**"Usar esta pantalla como TV"** para que todos miren la carrera en grande.
+
+**Controles**
+
+- Celular: botones **◀ ▶** para doblar (los dos juntos frenan) y botón redondo para el power-up.
+  Conviene ponerlo **horizontal**.
+- Compu: **← →** o **A D** para doblar, **↓ / S** frenar, **↑ / W / espacio** power-up.
 
 **Modos**
 
@@ -28,16 +33,15 @@ frenan. El botón redondo usa el power-up.
 Gana la copa el primero que llega al objetivo (5, 10 o 15). Si una ronda se alarga,
 llega la **muerte súbita**: la pantalla (o la arena) se achica.
 
-Se pueden sumar **bots** para completar lugares y hasta **2 jugadores con teclado**
-en la misma compu (`← → ↑ ↓` y `A D W S`).
+Se pueden sumar **bots** para completar lugares. En Batalla cada uno ve su propio auto
+con un minimapa; en los modos de pista todos ven la misma cámara (la del que va primero).
 
 ## Correrlo localmente
 
 ```bash
 npm install
 npm start
-# Pantalla grande: http://localhost:3000
-# Celulares (misma red): http://IP-DE-TU-COMPU:3000/c
+# Abrí http://localhost:3000 (o http://IP-DE-TU-COMPU:3000 desde otros dispositivos de tu red)
 ```
 
 ## Publicarlo en Render
@@ -50,8 +54,8 @@ y confirmá. Render instala las dependencias, arranca `node server.js` y expone 
 
 ## Estructura
 
-- `server.js` — servidor Express + WebSocket que maneja las salas y reenvía los controles.
-- `public/index.html`, `public/game.js` — pantalla principal: simulación, render y lobby.
-- `public/tracks.js` — pistas y arenas.
-- `public/c.html`, `public/controller.js` — control para el celular.
+- `server.js` — servidor Express + WebSocket: salas, bucle de simulación a 60 Hz e instantáneas a ~30 Hz.
+- `game/sim.js` — simulación autoritativa: física, power-ups, bots, reglas y rondas.
+- `shared/` — pistas y constantes usadas por servidor y clientes.
+- `public/index.html`, `public/app.js` — cliente: inicio, lobby, render con interpolación y controles.
 - `public/sfx.js` — efectos de sonido sintetizados.
