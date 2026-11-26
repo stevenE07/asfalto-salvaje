@@ -33,6 +33,10 @@ Como cada uno juega desde su propia pantalla, **cada jugador usa su propio tecla
 | 🏎️ Carrera Pura | Igual, pero sin power-ups. |
 | 💣 Batalla | Arena cerrada, 3 vidas por auto. El último en pie gana. |
 
+**Trompo:** si le pegás fuerte a la **cola** de otro auto, un poco corrido hacia un costado,
+lo mandás al trompo y queda girando y mirando para el otro lado. De frente, justo al medio,
+sólo lo empujás. El escudo lo salva (se rompe y aguanta el golpe).
+
 **Power-ups:** ⚡ Turbo · 🚀 Misil teledirigido · 💣 Mina · 🛢️ Aceite · 🛡️ Escudo · 💥 Onda expansiva.
 
 **Puntos por ronda:** 1.º 3, 2.º 2, 3.º 1 (con 2 o 3 jugadores se reparten menos puntos).

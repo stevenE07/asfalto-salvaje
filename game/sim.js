@@ -372,6 +372,37 @@ const REACH = (BODY_OFF + BODY_R) * 2; // distancia máxima entre centros con co
 const REST = 0.85;                     // rebote
 const FRIC = 0.3;                      // agarre del roce de costado
 const YAW_K = 0.00002, YAW_MAX = 0.18; // giro que provoca un golpe descentrado
+// Trompo: pegarle fuerte a la cola del otro, corrido hacia un costado, lo deja
+// girando y mirando para el otro lado.
+const PIT_SPEED = 130;  // velocidad de impacto mínima (los autos van a tope parecido)
+const PIT_LON = -4;     // el contacto tiene que caer detrás del centro del auto
+const PIT_LAT = 5;      // y corrido hacia un costado (si es justo al medio, sólo empuja)
+
+// vic recibe el golpe de att: (dx, dy) es el contacto respecto de su centro,
+// (px, py) el punto en el mundo y (fdx, fdy) la dirección del empuje.
+function pitSpin(g, W, vic, att, dx, dy, px, py, speed, fdx, fdy) {
+  if (speed < PIT_SPEED || vic.spin > 0 || vic.invuln > 0 || !vic.alive) return false;
+  const fx = Math.cos(vic.a), fy = Math.sin(vic.a), rx = -fy, ry = fx;
+  const lon = dx * fx + dy * fy, lat = dx * rx + dy * ry;
+  if (lon > PIT_LON || Math.abs(lat) < PIT_LAT) return false;
+  const flon = fdx * fx + fdy * fy, flat = fdx * rx + fdy * ry;
+  if (flon < 0.25) return false;          // el empuje tiene que venir de atrás
+  if (vic.shield > 0) {
+    vic.shield = 0; vic.invuln = 0.35;
+    ev(g, { e: 'block', x: r1(vic.x), y: r1(vic.y) });
+    return false;
+  }
+  vic.spin = clamp(speed / 330, 0.6, 0.85);   // ~150° con un golpe justo, media vuelta larga con uno fuerte
+  vic.spinDir = lon * flat - lat * flon > 0 ? 1 : -1;
+  vic.invuln = 0.3;
+  vic.skid = true;
+  ev(g, { e: 'spk', x: r1(px), y: r1(py), n: 12, c: '#ffffff' });
+  ev(g, { e: 'sfx', s: 'slip' });
+  ev(g, { e: 'toast', text: `${att.name} trompeó a ${vic.name}`, c: att.color });
+  vibrate(g, vic.p, [90, 40, 180]);
+  vibrate(g, att.p, 40);
+  return true;
+}
 
 function carCollisions(g, W) {
   const cs = W.cars;
@@ -415,8 +446,13 @@ function carCollisions(g, W) {
         const fx = jn * nx + jt * tx, fy = jn * ny + jt * ty;
         a.a = angNorm(a.a + clamp((ray * fx - rax * fy) * YAW_K, -YAW_MAX, YAW_MAX));
         b.a = angNorm(b.a + clamp((rbx * fy - rby * fx) * YAW_K, -YAW_MAX, YAW_MAX));
-        if (-rv > 200 && a.fxT <= 0) { a.fxT = 0.12; ev(g, { e: 'spk', x: r1(best.px), y: r1(best.py), n: 6 }); }
-        bumpV = Math.max(bumpV, -rv);
+        // ¿alguno recibió el golpe en la cola? va al trompo
+        const spd = -rv;
+        if (!pitSpin(g, W, b, a, rbx, rby, best.px, best.py, spd, nx, ny)) {
+          pitSpin(g, W, a, b, rax, ray, best.px, best.py, spd, -nx, -ny);
+        }
+        if (spd > 200 && a.fxT <= 0) { a.fxT = 0.12; ev(g, { e: 'spk', x: r1(best.px), y: r1(best.py), n: 6 }); }
+        bumpV = Math.max(bumpV, spd);
       }
     }
   }
