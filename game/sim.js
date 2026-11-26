@@ -293,7 +293,7 @@ function stepCar(g, W, c, dt) {
   lat *= Math.exp(-grip * dt);
   c.vx = fx * fwd + rx * lat; c.vy = fy * fwd + ry * lat;
   c.x += c.vx * dt; c.y += c.vy * dt;
-  c.skid = Math.abs(lat) > 120 || (brake && fwd > 220) || c.spin > 0;
+  c.skid = Math.abs(lat) > 95 || (brake && fwd > 220) || c.spin > 0;
   c.brake = brake;
 
   c.shield = Math.max(0, c.shield - dt);
@@ -364,29 +364,63 @@ function arenaConstrain(o, A, r, bounce) {
   return impact;
 }
 
+// Cada auto choca como una cápsula (dos círculos, trompa y cola), así que el
+// contacto coincide con lo que se ve: se tocan de costado, se empujan de atrás
+// y un golpe fuera del centro los hace girar un poco.
+const BODY_R = 13, BODY_OFF = 11;      // ≈ 48 de largo por 26 de ancho
+const REACH = (BODY_OFF + BODY_R) * 2; // distancia máxima entre centros con contacto
+const REST = 0.85;                     // rebote
+const FRIC = 0.3;                      // agarre del roce de costado
+const YAW_K = 0.00002, YAW_MAX = 0.18; // giro que provoca un golpe descentrado
+
 function carCollisions(g, W) {
   const cs = W.cars;
   let bumpV = 0;
   for (let i = 0; i < cs.length; i++) {
     const a = cs[i]; if (!a.alive) continue;
+    const afx = Math.cos(a.a) * BODY_OFF, afy = Math.sin(a.a) * BODY_OFF;
     for (let j = i + 1; j < cs.length; j++) {
       const b = cs[j]; if (!b.alive) continue;
-      const dx = b.x - a.x, dy = b.y - a.y, d2 = dx * dx + dy * dy, m = CAR_R * 2;
-      if (d2 >= m * m || d2 === 0) continue;
-      const d = Math.sqrt(d2), nx = dx / d, ny = dy / d, ov = (m - d) / 2;
+      const cdx = b.x - a.x, cdy = b.y - a.y;
+      if (cdx * cdx + cdy * cdy >= REACH * REACH) continue;
+      const bfx = Math.cos(b.a) * BODY_OFF, bfy = Math.sin(b.a) * BODY_OFF;
+      // el par de círculos más encimado manda el contacto
+      let best = null;
+      for (let p = -1; p <= 1; p += 2) for (let q = -1; q <= 1; q += 2) {
+        const ax = a.x + afx * p, ay = a.y + afy * p;
+        const bx = b.x + bfx * q, by = b.y + bfy * q;
+        const dx = bx - ax, dy = by - ay, d2 = dx * dx + dy * dy;
+        if (d2 >= (BODY_R * 2) * (BODY_R * 2) || d2 === 0) continue;
+        const d = Math.sqrt(d2);
+        if (!best || d < best.d) best = { d, dx, dy, px: (ax + bx) / 2, py: (ay + by) / 2 };
+      }
+      if (!best) continue;
+      const nx = best.dx / best.d, ny = best.dy / best.d, ov = (BODY_R * 2 - best.d) / 2;
+      const rax = best.px - a.x, ray = best.py - a.y;
+      const rbx = best.px - b.x, rby = best.py - b.y;
       a.x -= nx * ov; a.y -= ny * ov; b.x += nx * ov; b.y += ny * ov;
-      const rv = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+      const rvx = b.vx - a.vx, rvy = b.vy - a.vy;
+      const rv = rvx * nx + rvy * ny;
       if (rv < 0) {
-        const jImp = (-(1 + 0.55) * rv) / 2;
+        const jn = (-(1 + REST) * rv) / 2;
         const ka = b.shield > 0 ? 1.9 : 1, kb = a.shield > 0 ? 1.9 : 1;
-        a.vx -= jImp * nx * ka; a.vy -= jImp * ny * ka;
-        b.vx += jImp * nx * kb; b.vy += jImp * ny * kb;
-        if (-rv > 260 && a.fxT <= 0) { a.fxT = 0.12; ev(g, { e: 'spk', x: r1(a.x + nx * CAR_R), y: r1(a.y + ny * CAR_R), n: 6 }); }
+        a.vx -= jn * nx * ka; a.vy -= jn * ny * ka;
+        b.vx += jn * nx * kb; b.vy += jn * ny * kb;
+        // roce tangencial: los costados se arrastran en vez de resbalar libres
+        const tx = -ny, ty = nx;
+        const jt = clamp(-(rvx * tx + rvy * ty) / 2, -FRIC * jn, FRIC * jn);
+        a.vx -= jt * tx; a.vy -= jt * ty;
+        b.vx += jt * tx; b.vy += jt * ty;
+        // el golpe descentrado tuerce el trompa
+        const fx = jn * nx + jt * tx, fy = jn * ny + jt * ty;
+        a.a = angNorm(a.a + clamp((ray * fx - rax * fy) * YAW_K, -YAW_MAX, YAW_MAX));
+        b.a = angNorm(b.a + clamp((rbx * fy - rby * fx) * YAW_K, -YAW_MAX, YAW_MAX));
+        if (-rv > 200 && a.fxT <= 0) { a.fxT = 0.12; ev(g, { e: 'spk', x: r1(best.px), y: r1(best.py), n: 6 }); }
         bumpV = Math.max(bumpV, -rv);
       }
     }
   }
-  if (bumpV > 120 && (!W.bumpT || W.time - W.bumpT > 0.08)) { W.bumpT = W.time; ev(g, { e: 'bump', v: r1(bumpV) }); }
+  if (bumpV > 100 && (!W.bumpT || W.time - W.bumpT > 0.08)) { W.bumpT = W.time; ev(g, { e: 'bump', v: r1(bumpV) }); }
 }
 
 // ------------------------------------------------------------------ bots
