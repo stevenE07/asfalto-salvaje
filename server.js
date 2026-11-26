@@ -35,6 +35,10 @@ app.get('/qr.svg', async (req, res) => {
 // Links viejos (/c?r=CODE) siguen funcionando
 app.get('/c', (req, res) => res.redirect(302, '/' + (req.query.r ? `?r=${encodeURIComponent(String(req.query.r).slice(0, 4))}` : '')));
 app.use('/shared', express.static(path.join(__dirname, 'shared')));
+// Three.js (render 3D) servido desde node_modules
+let threeDir = path.join(__dirname, 'node_modules', 'three', 'build');
+try { threeDir = path.dirname(require.resolve('three/build/three.module.js')); } catch {}
+app.use('/vendor/three', express.static(threeDir, { maxAge: '7d', immutable: true }));
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
 
 /** code -> { code, game, clients:Set<ws>, emptySince, lastSnap, lastMeta, metaStr, wid } */

@@ -1,6 +1,7 @@
 # Asfalto Salvaje
 
-Juego de carreras de eliminación online, con vista desde arriba, para **1 a 8 jugadores**.
+Juego de carreras de eliminación online **en 3D** (cámara aérea en perspectiva, con Three.js),
+para **1 a 8 jugadores**.
 **Cada jugador ve la carrera en su propia pantalla** (celular o compu) y juega desde ahí,
 así que se puede jugar cada uno desde su casa. No hay que instalar nada: es una página web.
 
@@ -15,9 +16,14 @@ Opcional: en una tele o proyector se puede abrir la página y elegir
 
 **Controles**
 
+Como cada uno juega desde su propia pantalla, **cada jugador usa su propio teclado**
+(o la pantalla táctil de su celular).
+
 - Celular: botones **◀ ▶** para doblar (los dos juntos frenan) y botón redondo para el power-up.
   Conviene ponerlo **horizontal**.
 - Compu: **← →** o **A D** para doblar, **↓ / S** frenar, **↑ / W / espacio** power-up.
+- Cada uno puede cambiar sus teclas en **⌨️ Mis teclas** (en el inicio o en el lobby). La elección
+  queda guardada en esa compu, así que no afecta a los demás jugadores.
 
 **Modos**
 
@@ -57,5 +63,7 @@ y confirmá. Render instala las dependencias, arranca `node server.js` y expone 
 - `server.js` — servidor Express + WebSocket: salas, bucle de simulación a 60 Hz e instantáneas a ~30 Hz.
 - `game/sim.js` — simulación autoritativa: física, power-ups, bots, reglas y rondas.
 - `shared/` — pistas y constantes usadas por servidor y clientes.
-- `public/index.html`, `public/app.js` — cliente: inicio, lobby, render con interpolación y controles.
+- `public/index.html`, `public/app.js` — cliente: inicio, lobby, interpolación, HUD 2D y controles.
+- `public/render3d.js` — render 3D con Three.js: pistas, arenas, autos, power-ups y efectos.
+  El servidor sirve Three.js desde `node_modules` en `/vendor/three`, así que hace falta `npm install`.
 - `public/sfx.js` — efectos de sonido sintetizados.
