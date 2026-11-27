@@ -12,29 +12,29 @@
       ground: '#4f9b40', dots: ['#5aa84b', '#468f38', '#63b153'], runoff: '#86b85a',
       wallA: '#f2f2f2', wallB: '#d93a3a', curbA: '#d8333a', curbB: '#f5f5f5',
       road: '#4b4e57', line: 'rgba(255,255,255,0.45)', edge: 'rgba(255,255,255,0.8)',
-      decor: ['tree', 'tree', 'tree', 'bush', 'flowers'], grip: 9.6,
+      decor: ['tree', 'tree', 'tree', 'bush', 'flowers'], grip: 1.0,   // agarre del asfalto (1 = seco)
     },
     duna: {
       ground: '#d9a35b', dots: ['#e5b16c', '#cc9450', '#efc184'], runoff: '#ecc88f',
       wallA: '#8a5a3a', wallB: '#f1dcb5', curbA: '#b8432c', curbB: '#f7e8ca',
       road: '#5d524a', line: 'rgba(255,240,210,0.45)', edge: 'rgba(255,240,210,0.75)',
-      decor: ['cactus', 'rock', 'rock', 'cactus', 'skull'], grip: 8.8,
+      decor: ['cactus', 'rock', 'rock', 'cactus', 'skull'], grip: 0.93,  // arena suelta
     },
     hielo: {
       ground: '#e6eff6', dots: ['#ffffff', '#d4e2ee', '#f1f7fb'], runoff: '#cddfeb',
       wallA: '#2f6fb3', wallB: '#ffffff', curbA: '#2f6fb3', curbB: '#ffffff',
       road: '#5a6571', line: 'rgba(255,255,255,0.5)', edge: 'rgba(255,255,255,0.85)',
-      decor: ['pine', 'pine', 'pine', 'ice', 'snowman'], grip: 6.2,
+      decor: ['pine', 'pine', 'pine', 'ice', 'snowman'], grip: 0.76,  // hielo
     },
     neon: {
       ground: '#1b1730', dots: ['#241e40', '#16122a', '#2c2550'], runoff: '#2a2347',
       wallA: '#ff3fd2', wallB: '#3ff0ff', curbA: '#ff3fd2', curbB: '#221c3c',
       road: '#2c2e3c', line: 'rgba(63,240,255,0.55)', edge: 'rgba(255,63,210,0.8)',
-      decor: ['building', 'building', 'lamp', 'building'], grip: 9.3, night: true,
+      decor: ['building', 'building', 'lamp', 'building'], grip: 0.97, night: true,
     },
     fabrica: {
       ground: '#5b6068', dots: ['#646a73', '#525760', '#6c727b'], runoff: '#5b6068',
-      wallA: '#f2c230', wallB: '#26282c', road: '#5b6068', grip: 9.0,
+      wallA: '#f2c230', wallB: '#26282c', road: '#5b6068', grip: 0.95,
     },
   };
 

@@ -66,6 +66,9 @@ y confirmá. Render instala las dependencias, arranca `node server.js` y expone 
 
 - `server.js` — servidor Express + WebSocket: salas, bucle de simulación a 60 Hz e instantáneas a ~30 Hz.
 - `game/sim.js` — simulación autoritativa: física, power-ups, bots, reglas y rondas.
+  La física es un modelo de bicicleta con fuerzas de neumático: ángulos de deriva por eje,
+  transferencia de peso, círculo de fricción e inercia de giro propia, así que el auto
+  sobrevira, subvira, se cruza si entrás pasado y se endereza con contravolante.
 - `shared/` — pistas y constantes usadas por servidor y clientes.
 - `public/index.html`, `public/app.js` — cliente: inicio, lobby, interpolación, HUD 2D y controles.
 - `public/render3d.js` — render 3D con Three.js: pistas, arenas, autos, power-ups y efectos.

@@ -11,7 +11,7 @@ const ARENAS = Tracks.ARENA_DEFS.map(Tracks.buildArena);
 
 const TAU = Math.PI * 2;
 const DT = 1 / 60;
-const MAX_SPEED = 540, ACCEL = 560, TURN = 3.15;
+const MAX_SPEED = 540, ACCEL = 560;
 const KO_SD_START = 40, KO_SD_LEN = 35, KO_SD_MIN = 0.18;
 const AR_SD_START = 45, AR_SD_LEN = 30;
 const LOBBY_DROP_MS = 15000;
@@ -88,7 +88,7 @@ function cycleColor(g, p) {
 function makeCar(W, p, x, y, a) {
   const c = {
     p, color: COLORS[p.color].hex, name: p.name, x, y, a, vx: 0, vy: 0, steer: 0, alive: true,
-    item: null, roll: 0, rollItem: null, turbo: 0, shield: 0, spin: 0, spinDir: 1, invuln: 0, oilImm: 0,
+    item: null, roll: 0, rollItem: null, turbo: 0, shield: 0, spin: 0, spinDir: 1, av: 0, invuln: 0, oilImm: 0,
     hp: 3, hitFlash: 0, sdT: 0, seg: 0, s: 0, prog: 0, offroad: false, warn: 0, heldT: 0, skid: false, brake: false,
     speedMul: p.kind === 'bot' ? 0.95 : 1, fxT: 0,
     bot: p.kind === 'bot' ? { lane: rand(-60, 60), laneT: rand(1, 3), itemT: 1, skill: rand(0.8, 1), stuckT: 0 } : null,
@@ -165,6 +165,7 @@ function hit(g, W, c, kind, sx, sy) {
     if (W.arena) damage(g, W, c, 1);
   }
   c.spinDir = Math.random() < 0.5 ? -1 : 1;
+  c.av = clamp(c.av + c.spinDir * rand(7, 10), -11, 11);
   return true;
 }
 function damage(g, W, c, n) {
@@ -258,42 +259,79 @@ function useItem(g, W, c) {
 }
 
 // ------------------------------------------------------------------ física
+// Modelo de bicicleta con fuerzas de neumático: el auto no gira porque sí, gira
+// porque las gomas empujan. Tiene inercia de giro propia, ángulos de deriva,
+// transferencia de peso y círculo de fricción, así que sobrevira, subvira,
+// se cruza si entrás pasado y se endereza con contravolante.
+const MAX_STEER = 0.52;        // ángulo máximo de las ruedas (rad)
+const A_F = 21, A_R = 21;      // distancia del centro a cada eje
+const YAW_I = 300;             // inercia de guiñada
+const GRIP = 1150;              // aceleración lateral máxima con carga completa
+const MU_F = 1.0, MU_R = 1.08; // el tren trasero agarra un toque más: subviraje suave
+const SLIP_F = 0.16, SLIP_R = 0.18; // deriva a la que satura cada eje
+const LOAD_K = 0.00045;        // transferencia de peso al acelerar y frenar
+const YAW_DAMP = 0.7;          // rozamiento de guiñada
+
 function stepCar(g, W, c, dt) {
   const inp = c.p.input;
   let L = !!inp.l, R = !!inp.r, brake = !!inp.b;
   if (L && R) { brake = true; L = R = false; }
-  if (c.spin > 0) { L = R = brake = false; }
+  const loose = c.spin > 0;              // sin control (trompo, aceite, misil)
+  if (loose) { L = R = brake = false; c.spin -= dt; }
   const tgt = (R ? 1 : 0) - (L ? 1 : 0);
   c.steer += clamp(tgt - c.steer, -dt * 10, dt * 10);
 
-  let fx = Math.cos(c.a), fy = Math.sin(c.a);
-  let fwd = c.vx * fx + c.vy * fy;
-  const speedK = clamp(Math.abs(fwd) / 200, 0.3, 1);
-  if (c.spin > 0) {
-    c.a += c.spinDir * 11 * dt * clamp(c.spin, 0.35, 1);
-    c.spin -= dt;
-  } else {
-    c.a += c.steer * TURN * dt * speedK;
-  }
-  c.a = angNorm(c.a);
-  fx = Math.cos(c.a); fy = Math.sin(c.a);
-  const rx = -fy, ry = fx;
-  fwd = c.vx * fx + c.vy * fy;
-  let lat = c.vx * rx + c.vy * ry;
+  const fx = Math.cos(c.a), fy = Math.sin(c.a), rx = -fy, ry = fx;
+  let vLon = c.vx * fx + c.vy * fy;
+  let vLat = c.vx * rx + c.vy * ry;
+  const speed = Math.hypot(vLon, vLat);
+
+  // --- motor y frenos (el auto acelera solo)
   let max = MAX_SPEED * c.speedMul;
   if (W.arena) max *= 0.78;
   if (c.offroad) max *= 0.55;
   if (c.turbo > 0) { max *= 1.55; c.turbo -= dt; }
   if (brake) max *= 0.3;
-  if (Math.abs(c.steer) > 0.6) max *= 0.95;
-  if (c.spin > 0) fwd *= Math.exp(-1.7 * dt);
-  else if (fwd < max) fwd = Math.min(max, fwd + ACCEL * (c.turbo > 0 ? 2.4 : 1) * dt);
-  else fwd = Math.max(max, fwd - (brake ? 1100 : 420) * dt);
-  const grip = c.spin > 0 ? 1.4 : W.grip * (c.offroad ? 0.85 : 1);
-  lat *= Math.exp(-grip * dt);
-  c.vx = fx * fwd + rx * lat; c.vy = fy * fwd + ry * lat;
+  let aLon;
+  if (loose) aLon = -vLon * 1.5;
+  else if (vLon < max) aLon = ACCEL * (c.turbo > 0 ? 2.4 : 1);
+  else aLon = -(brake ? 1100 : 420);
+
+  // --- carga sobre cada eje: frenar carga el tren delantero, acelerar el trasero
+  const Fzf = clamp(0.5 - aLon * LOAD_K, 0.2, 0.8);
+  const Fzr = 1 - Fzf;
+
+  // --- neumáticos
+  const mu = W.grip * (c.offroad ? 0.6 : 1) * (loose ? 0.38 : 1);
+  const steerAng = c.steer * MAX_STEER * clamp(1 - speed / 1500, 0.45, 1);
+  const vRef = Math.max(70, Math.abs(vLon));
+  const dir = vLon < -20 ? -1 : 1;
+  const slipF = Math.atan2(vLat + c.av * A_F, vRef) - steerAng * dir;
+  const slipR = Math.atan2(vLat - c.av * A_R, vRef);
+  // el círculo de fricción: lo que gasta el motor o el freno no está para doblar
+  const grab = Math.sqrt(Math.max(0, 1 - Math.min(1, (Math.abs(aLon) / (mu * GRIP * 1.45)) ** 2)));
+  // casi parado las gomas no empujan: no se puede pivotear en el lugar
+  const roll = clamp(speed / 110, 0, 1);
+  const capF = MU_F * mu * GRIP * Fzf * grab * roll;
+  const capR = MU_R * mu * GRIP * Fzr * grab * roll;
+  const Fyf = clamp(-slipF / SLIP_F, -1, 1) * capF;
+  const Fyr = clamp(-slipR / SLIP_R, -1, 1) * capR;
+
+  // --- integración en ejes del auto
+  const cosS = Math.cos(steerAng);
+  c.av += ((A_F * Fyf * cosS - A_R * Fyr) / YAW_I) * dt;
+  c.av -= c.av * (loose ? YAW_DAMP * 0.35 : YAW_DAMP) * dt;
+  c.av = clamp(c.av, -11, 11);
+  const aLat = Fyf * cosS + Fyr;
+  vLon += (aLon + vLat * c.av) * dt;
+  vLat += (aLat - vLon * c.av) * dt;
+  vLat *= Math.exp(-0.6 * dt);           // rozamiento lateral de rodadura
+  c.a = angNorm(c.a + c.av * dt);
+
+  c.vx = Math.cos(c.a) * vLon + -Math.sin(c.a) * vLat;
+  c.vy = Math.sin(c.a) * vLon + Math.cos(c.a) * vLat;
   c.x += c.vx * dt; c.y += c.vy * dt;
-  c.skid = Math.abs(lat) > 95 || (brake && fwd > 220) || c.spin > 0;
+  c.skid = Math.abs(slipR) > 0.22 || Math.abs(slipF) > 0.3 || (brake && vLon > 220) || loose;
   c.brake = brake;
 
   c.shield = Math.max(0, c.shield - dt);
@@ -371,29 +409,30 @@ const BODY_R = 13, BODY_OFF = 11;      // ≈ 48 de largo por 26 de ancho
 const REACH = (BODY_OFF + BODY_R) * 2; // distancia máxima entre centros con contacto
 const REST = 0.85;                     // rebote
 const FRIC = 0.3;                      // agarre del roce de costado
-const YAW_K = 0.00002, YAW_MAX = 0.18; // giro que provoca un golpe descentrado
-// Trompo: pegarle fuerte a la cola del otro, corrido hacia un costado, lo deja
-// girando y mirando para el otro lado.
+// Trompo: el choque ya reparte el giro según dónde pegó; si a alguien le
+// pegaron en la cola y quedó girando más rápido de lo que puede corregir, se le
+// va el auto y pierde el control un rato.
 const PIT_SPEED = 130;  // velocidad de impacto mínima (los autos van a tope parecido)
 const PIT_LON = -4;     // el contacto tiene que caer detrás del centro del auto
-const PIT_LAT = 5;      // y corrido hacia un costado (si es justo al medio, sólo empuja)
+const PIT_AV = 2.4;     // giro que le dejó el golpe (rad/s) para que se le vaya
 
 // vic recibe el golpe de att: (dx, dy) es el contacto respecto de su centro,
 // (px, py) el punto en el mundo y (fdx, fdy) la dirección del empuje.
 function pitSpin(g, W, vic, att, dx, dy, px, py, speed, fdx, fdy) {
   if (speed < PIT_SPEED || vic.spin > 0 || vic.invuln > 0 || !vic.alive) return false;
-  const fx = Math.cos(vic.a), fy = Math.sin(vic.a), rx = -fy, ry = fx;
-  const lon = dx * fx + dy * fy, lat = dx * rx + dy * ry;
-  if (lon > PIT_LON || Math.abs(lat) < PIT_LAT) return false;
-  const flon = fdx * fx + fdy * fy, flat = fdx * rx + fdy * ry;
-  if (flon < 0.25) return false;          // el empuje tiene que venir de atrás
+  const fx = Math.cos(vic.a), fy = Math.sin(vic.a);
+  const lon = dx * fx + dy * fy;
+  if (lon > PIT_LON) return false;                 // sólo golpes en la cola
+  if (fdx * fx + fdy * fy < 0.25) return false;    // y empujando desde atrás
+  if (Math.abs(vic.av) < PIT_AV) return false;     // de lleno al medio no lo cruza
   if (vic.shield > 0) {
     vic.shield = 0; vic.invuln = 0.35;
     ev(g, { e: 'block', x: r1(vic.x), y: r1(vic.y) });
     return false;
   }
-  vic.spin = clamp(speed / 330, 0.6, 0.85);   // ~150° con un golpe justo, media vuelta larga con uno fuerte
-  vic.spinDir = lon * flat - lat * flon > 0 ? 1 : -1;
+  vic.spinDir = vic.av > 0 ? 1 : -1;
+  vic.av = clamp(vic.av * 2.1, -11, 11);      // el tren trasero se suelta del todo
+  vic.spin = clamp(Math.abs(vic.av) / 12, 0.35, 0.8); // segundos sin poder corregir
   vic.invuln = 0.3;
   vic.skid = true;
   ev(g, { e: 'spk', x: r1(px), y: r1(py), n: 12, c: '#ffffff' });
@@ -442,10 +481,10 @@ function carCollisions(g, W) {
         const jt = clamp(-(rvx * tx + rvy * ty) / 2, -FRIC * jn, FRIC * jn);
         a.vx -= jt * tx; a.vy -= jt * ty;
         b.vx += jt * tx; b.vy += jt * ty;
-        // el golpe descentrado tuerce el trompa
+        // el golpe fuera del centro le mete giro de verdad, no una rotación fija
         const fx = jn * nx + jt * tx, fy = jn * ny + jt * ty;
-        a.a = angNorm(a.a + clamp((ray * fx - rax * fy) * YAW_K, -YAW_MAX, YAW_MAX));
-        b.a = angNorm(b.a + clamp((rbx * fy - rby * fx) * YAW_K, -YAW_MAX, YAW_MAX));
+        a.av = clamp(a.av + clamp((ray * fx - rax * fy) / YAW_I, -5, 5), -11, 11);
+        b.av = clamp(b.av + clamp((rbx * fy - rby * fx) / YAW_I, -5, 5), -11, 11);
         // ¿alguno recibió el golpe en la cola? va al trompo
         const spd = -rv;
         if (!pitSpin(g, W, b, a, rbx, rby, best.px, best.py, spd, nx, ny)) {
