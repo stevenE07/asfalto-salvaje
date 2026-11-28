@@ -73,6 +73,11 @@ const SFX = (() => {
     antiMud() { if (ok('amud', 0.15)) { noise(0.4, 0.55, 520, 1.4, 90); tone(120, 0.3, 'sine', 0.2, 50); } },
     antiChoke() { if (ok('acho', 0.15)) { [0, 0.11, 0.22, 0.34].forEach((d, i) => tone(300 - i * 50, 0.1, 'sawtooth', 0.16, 90 - i * 15, d)); noise(0.45, 0.2, 500, 1, 120); } },
     apick() { if (ok('apick', 0.05)) { tone(520, 0.08, 'sawtooth', 0.11); tone(340, 0.16, 'sawtooth', 0.11, 150, 0.07); } },
+    // obstáculos de pista
+    jump() { if (ok('jump', 0.12)) { tone(260, 0.3, 'square', 0.12, 900); noise(0.28, 0.2, 700, 1.5, 3000); } },
+    land() { if (ok('land', 0.12)) { tone(120, 0.18, 'sine', 0.3, 60); noise(0.16, 0.3, 1800, 2, 500); } },
+    splash() { if (ok('splash', 0.1)) { noise(0.55, 0.6, 1600, 0.9, 180); tone(420, 0.3, 'sine', 0.16, 90); noise(0.3, 0.25, 500, 1.2, 1400, 0.12); } },
+    fall() { if (ok('fall', 0.1)) { tone(700, 0.8, 'triangle', 0.22, 60); noise(0.5, 0.18, 900, 1, 120, 0.3); } },
     shield() { if (ok('shi', 0.1)) { tone(400, 0.3, 'sine', 0.2, 1200); } },
     wave() { if (ok('wav', 0.1)) { tone(500, 0.5, 'sine', 0.3, 60); noise(0.4, 0.3, 600, 1, 100); } },
     block() { if (ok('blk', 0.08)) tone(1500, 0.15, 'triangle', 0.2, 800); },

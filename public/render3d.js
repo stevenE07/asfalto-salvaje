@@ -2,8 +2,8 @@
 // El mundo 2D de la simulación (x, y) se mapea a 3D como (x, altura, y).
 import * as THREE from '/vendor/three/three.module.js';
 
-const { ROAD, CURB, WALL } = window.Tracks;
-const { F, VIEW_W, VIEW_H, ITEMS, ANTIS } = window.Common;
+const { ROAD, CURB, WALL, pointAt, spanAt, forkHalf } = window.Tracks;
+const { F, VIEW_W, VIEW_H, VIEW_R, ITEMS, ANTIS } = window.Common;
 const TAU = Math.PI * 2;
 const TILT = 1.08;            // inclinación de la cámara sobre el piso (~62°)
 const FOV = 42;
@@ -238,6 +238,75 @@ function buildDecor(list, root) {
   }
 }
 
+// ------------------------------------------------------------- obstáculos
+// La isla de la bifurcación: nace y muere en punta, así que se dibuja tajada
+// por tajada con el mismo ancho que usa la simulación.
+function islandMesh(T, f, color, h, inset) {
+  const pos = [], idx = [], N = T.N, flaco = inset || 0;
+  const px = (k, d) => [T.xs[k] - T.ty[k] * d, T.ys[k] + T.tx[k] * d];
+  for (let i = 0; i < N; i++) {
+    const d0 = spanAt(T, T.cum[i], f);
+    if (d0 < 0) continue;
+    const j = (i + 1) % N;
+    let d1 = spanAt(T, T.cum[j], f);
+    if (d1 < 0) d1 = f.len;
+    const w0 = Math.max(0.5, forkHalf(f, d0) - flaco), w1 = Math.max(0.5, forkHalf(f, d1) - flaco);
+    pushQuad(pos, idx, h, px(i, -w0), px(i, w0), px(j, w1), px(j, -w1));
+  }
+  const m = new THREE.Mesh(flatGeometry(pos, idx), lam({ color: cssCol(color).color, side: THREE.DoubleSide }));
+  m.matrixAutoUpdate = false;
+  return m;
+}
+
+// La rampa que manda al auto por arriba del agua: va de ocre a amarillo para
+// que se lea la subida desde arriba, y es igual en todas las pistas.
+const RAMP_BAJO = new THREE.Color('#8a5a1e'), RAMP_ALTO = new THREE.Color('#ffd45e');
+function rampMesh(T, r) {
+  const pos = [], idx = [], col = [], H = 30, n = 8, d = ROAD + 8;
+  const c = new THREE.Color();
+  for (let k = 0; k < n; k++) {
+    const a = pointAt(T, r.s0 + (r.len * k) / n), b = pointAt(T, r.s0 + (r.len * (k + 1)) / n);
+    const tA = k / n, tB = (k + 1) / n;
+    const hA = H * Math.pow(tA, 1.6), hB = H * Math.pow(tB, 1.6);
+    const base = pos.length / 3;
+    pos.push(a.x - a.nx * d, hA, a.y - a.ny * d, a.x + a.nx * d, hA, a.y + a.ny * d);
+    pos.push(b.x + b.nx * d, hB, b.y + b.ny * d, b.x - b.nx * d, hB, b.y - b.ny * d);
+    for (const t of [tA, tA, tB, tB]) { c.copy(RAMP_BAJO).lerp(RAMP_ALTO, t); col.push(c.r, c.g, c.b); }
+    idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  }
+  const m = new THREE.Mesh(flatGeometry(pos, idx, col), lam({ vertexColors: true, side: THREE.DoubleSide }));
+  m.matrixAutoUpdate = false;
+  return m;
+}
+
+function buildHazards(T, root, th) {
+  const enTramo = (f) => (i) => spanAt(T, T.cum[i], f) >= 0;
+  for (const f of T.feats) {
+    if (f.t === 'hole') {
+      const hondo = mesh(['circ', f.r, 30], bas({ color: 0x08080c }));
+      hondo.position.set(f.x, 2.4, f.y);
+      const borde = mesh(['ring', f.r, f.r + 12, 32], lam({ color: 0x2f2f38 }));
+      borde.position.set(f.x, 2.8, f.y);
+      root.add(hondo, borde);
+    } else if (f.t === 'water') {
+      root.add(ribbon(T, -(WALL + 10), WALL + 10, 1.2, '#09182a', enTramo(f)));
+      const agua = ribbon(T, -(WALL + 10), WALL + 10, 8, 'rgba(56,138,206,0.78)', enTramo(f));
+      agua.renderOrder = 1;
+      root.add(agua, rampMesh(T, f.ramp));
+    } else if (f.t === 'bridge') {
+      const dentro = enTramo(f);
+      root.add(ribbon(T, -(WALL + 10), -f.w, 2.6, '#08080c', dentro));   // el vacío a los costados
+      root.add(ribbon(T, f.w, WALL + 10, 2.6, '#08080c', dentro));
+      root.add(ribbon(T, -f.w, f.w, 3.4, '#7a5533', dentro));            // los tablones
+      root.add(ribbon(T, -f.w, -f.w + 8, 9, th.curbA || '#d8333a', dentro));
+      root.add(ribbon(T, f.w - 8, f.w, 9, th.curbA || '#d8333a', dentro));
+    } else if (f.t === 'fork') {
+      root.add(islandMesh(T, f, th.curbA || '#d8333a', 4.6));
+      root.add(islandMesh(T, f, th.ground, 5.4, 9));
+    }
+  }
+}
+
 // ------------------------------------------------------------------ escena estática
 function buildTrackScene(T, decor) {
   const root = new THREE.Group();
@@ -272,6 +341,7 @@ function buildTrackScene(T, decor) {
   }
   root.add(new THREE.Mesh(flatGeometry(pos, idx, col), lam({ vertexColors: true })));
 
+  if (T.feats && T.feats.length) buildHazards(T, root, th);
   if (decor) buildDecor(decor, root);
   return root;
 }
@@ -439,7 +509,12 @@ function setBadge(sprite, icon, ring) {
 
 function updateCar(g, c, time, isMe) {
   const u = g.userData;
-  g.position.set(c.x, 0, c.y);
+  const alto = c.z || 0;
+  g.position.set(c.x, alto, c.y);
+  u.shadow.position.y = 0.9 - alto;              // la sombra se queda en el piso
+  const ks = 1 / (1 + alto / 70);
+  u.shadow.scale.set(ks, 1, ks);
+  u.shadow.material.opacity = 0.26 * ks;
   g.rotation.y = -c.a;
   g.visible = true;
   const flash = (c.f & F.FLASH) && Math.floor(time * 20) % 2 === 0;
@@ -688,23 +763,19 @@ function updateSkids(S) {
 }
 
 // ------------------------------------------------------------------ zona de eliminación
+// La zona viva es un círculo: afuera se oscurece todo y el borde se marca en rojo.
 function makeZone() {
   const g = new THREE.Group();
   const dark = bas({ color: 0x0a0814, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide });
-  for (let i = 0; i < 4; i++) {
-    const m = mesh(['plane'], dark);
-    m.position.y = 3;
-    m.renderOrder = 2;
-    g.add(m);
-  }
+  const afuera = mesh(['ring', 1, 42, 96], dark);   // radio interior 1: se escala al radio real
+  afuera.position.y = 3;
+  afuera.renderOrder = 2;
   const line = bas({ color: 0xff3c3c, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide });
-  for (let i = 0; i < 4; i++) {
-    const m = mesh(['plane'], line);
-    m.position.y = 4;
-    m.renderOrder = 3;
-    g.add(m);
-  }
-  g.userData = { dark, line };
+  const borde = mesh(['ring', 1, 1.014, 96], line);
+  borde.position.y = 4;
+  borde.renderOrder = 3;
+  g.add(afuera, borde);
+  g.userData = { dark, line, afuera, borde };
   return g;
 }
 
@@ -714,36 +785,18 @@ function updateZone(S, time) {
   zoneGroup.visible = on;
   if (!on) return;
   const sk = W.phase === 'race' ? W.shrink : 1;
-  const hw = (VIEW_W / 2) * sk, hh = (VIEW_H / 2) * sk;
-  const E = 12000, cx = W.camX, cz = W.camY;
+  const R = VIEW_R * sk, cx = W.camX, cz = W.camY;
   const u = zoneGroup.userData;
   u.dark.color.set(sk < 1 ? 0x2a0006 : 0x0a0814);
   u.dark.opacity = sk < 1 ? 0.58 : 0.5;
-  const rect = [
-    [cx, cz - hh - E / 2, (hw + E) * 2, E],
-    [cx, cz + hh + E / 2, (hw + E) * 2, E],
-    [cx - hw - E / 2, cz, E, hh * 2],
-    [cx + hw + E / 2, cz, E, hh * 2],
-  ];
-  for (let i = 0; i < 4; i++) {
-    const m = zoneGroup.children[i], r = rect[i];
-    m.position.x = r[0]; m.position.z = r[1];
-    m.scale.set(r[2], 1, r[3]);
-  }
-  const t = sk < 1 ? 14 : 7;
+  u.afuera.position.set(cx, 3, cz);
+  u.afuera.scale.set(R, 1, R);
   u.line.color.set(sk < 1 ? 0xff3c3c : 0xffffff);
   u.line.opacity = sk < 1 ? 0.55 + 0.4 * Math.sin(time * 10) : 0.22;
-  const borders = [
-    [cx, cz - hh, hw * 2, t],
-    [cx, cz + hh, hw * 2, t],
-    [cx - hw, cz, t, hh * 2],
-    [cx + hw, cz, t, hh * 2],
-  ];
-  for (let i = 0; i < 4; i++) {
-    const m = zoneGroup.children[4 + i], r = borders[i];
-    m.position.x = r[0]; m.position.z = r[1];
-    m.scale.set(r[2], 1, r[3]);
-  }
+  u.borde.position.set(cx, 4, cz);
+  const gordo = sk < 1 ? 1.022 : 1.011;
+  u.borde.scale.set(R, 1, R);
+  u.borde.geometry = geo(['ring', 1, gordo, 96]);
 }
 
 function updateSafe(S, time) {

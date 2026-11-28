@@ -172,6 +172,8 @@
   .corner { position: fixed; top: max(10px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); display: flex; gap: 8px; z-index: 8; }
   .corner button { width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--line); background: rgba(10,8,20,0.6); font-size: 17px; }
   body.ingame .corner { top: auto; bottom: max(10px, env(safe-area-inset-bottom)); right: 50%; transform: translateX(50%); opacity: .45; }
+  .corner:hover, .corner:focus-within { opacity: 1 !important; }
+  #btnQuit.armado { background: #c0392b; border-color: #ff8f80; width: auto; padding: 0 12px; font-size: 14px; font-weight: 700; }
   body.ingame.touch .corner { bottom: auto; top: 64px; right: max(10px, env(safe-area-inset-right)); transform: none; }
   /* ---------- teclas ---------- */
   .keys-card { width: min(580px, 100%); display: grid; gap: 14px; }
@@ -252,6 +254,10 @@
             <h3>Velocidad de los autos</h3>
             <div id="speeds" class="chips"></div>
           </div>
+          <div>
+            <h3>Agarre de las gomas</h3>
+            <div id="grips" class="chips"></div>
+          </div>
         </section>
       </div>
       <section>
@@ -268,13 +274,14 @@
           <ul>
             <li>El auto acelera solo. Doblás con <b>◀ ▶</b> (o las flechas / A D). Los dos a la vez <b>frenan</b>.</li>
             <li>En la compu cada uno juega con <b>su propio teclado</b>: mirá <b>⌨️ Mis teclas</b> para elegir las tuyas.</li>
-            <li>La cámara sigue al que va <b>primero</b>: si te quedás fuera de la pantalla, quedás eliminado.</li>
+            <li>La cámara sigue al que va <b>primero</b>: hay un <b>círculo</b> alrededor y el que se queda afuera queda eliminado. Si no te ves, mirá la flecha de tu color en el borde.</li>
+            <li>Ojo con la calle: hay <b>pozos</b> que se te tragan, <b>agua</b> que se cruza saltando con la rampa (hay que llegar rápido), <b>puentes</b> sin baranda y <b>bifurcaciones</b> que se vuelven a juntar.</li>
             <li>Pegale a la <b>cola</b> de otro, medio de costado, y lo mandás al <b>trompo</b>: queda mirando para el otro lado.</li>
             <li>Agarrá las cajas amarillas <b>?</b> y usá el power-up con el botón redondo (o ↑ / espacio): ⚡ Turbo, 🚀 Misil, 💣 Mina, 🛢️ Aceite, 🛡️ Escudo, 💥 Onda, 🪝 Gancho.</li>
             <li>El <b>🪝 gancho</b> le sale a los que van atrás: engancha al auto de adelante y te lleva hasta él.</li>
             <li>Las cajas <b>negras</b> tienen <b>anti-poderes</b>: se los tirás al de adelante con el botón violeta (o E). 🔄 le da vuelta los controles, 🪣 le ensucia el parabrisas y 🐌 le ahoga el motor. El 🛡️ escudo los para.</li>
             <li>El último en pie gana la ronda. Puntos: 1.º 3, 2.º 2, 3.º 1.</li>
-            <li>Si la ronda se alarga llega la <b>muerte súbita</b>: la pantalla se achica.</li>
+            <li>Si la ronda se alarga llega la <b>muerte súbita</b>: el círculo se achica.</li>
           </ul>
         </details>
       </section>
@@ -337,6 +344,7 @@
 <div class="corner">
   <button id="btnMute" title="Sonido">🔊</button>
   <button id="btnFull" title="Pantalla completa">⛶</button>
+  <button id="btnQuit" class="hidden" title="Salir de la carrera">🚪</button>
 </div>
 <div id="netStatus" class="hidden">Conectando…</div>
 <div id="toast" class="hidden"></div>

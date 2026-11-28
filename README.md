@@ -25,14 +25,30 @@ Como cada uno juega desde su propia pantalla, **cada jugador usa su propio tecla
   **E** anti-poder.
 - Cada uno puede cambiar sus teclas en **⌨️ Mis teclas** (en el inicio o en el lobby). La elección
   queda guardada en esa compu, así que no afecta a los demás jugadores.
+- Para irte en medio de la carrera está el botón **🚪** en la esquina: hay que tocarlo dos veces.
 
 **Modos**
 
 | Modo | Cómo funciona |
 | --- | --- |
-| 🏁 Eliminación | La cámara sigue al que va primero. Si quedás fuera de pantalla, quedás eliminado. Con power-ups. |
+| 🏁 Eliminación | La cámara sigue al que va primero y hay un **círculo** alrededor: el que se queda afuera queda eliminado. Con power-ups. |
 | 🏎️ Carrera Pura | Igual, pero sin power-ups. |
 | 💣 Batalla | Arena cerrada, 3 vidas por auto. El último en pie gana. |
+
+El círculo es más grande que lo que entra en la pantalla, así que podés estar vivo sin verte:
+cuando pasa, aparece una **flecha de tu color** en el borde que dice para dónde quedaste y
+cuánto te falta para quedar afuera.
+
+## Obstáculos de la calle
+
+Las pistas no son sólo asfalto. Cada una tiene lo suyo y la de **Infierno Oxidado** tiene de todo.
+
+| Obstáculo | Cómo funciona |
+| --- | --- |
+| 🕳️ Pozo | Si caés adentro, se terminó la ronda para vos. Se esquivan por el costado. |
+| 🌊 Agua con rampa | La rampa te manda por el aire y cruzás por arriba. Hay que llegar **rápido**: si venís arrastrándote o cruzaste por el pasto, te quedás corto y te caés. En el aire no chocás con nadie ni te alcanzan minas ni aceite. |
+| 🌉 Puente angosto | Las barandas se cierran en embudo al entrar, pero arriba del puente no hay nada: si te salís, te caés al vacío. |
+| 🔀 Bifurcación | Una isla en el medio parte la pista en dos carriles que se vuelven a juntar solos más adelante. |
 
 **Trompo:** si le pegás fuerte a la **cola** de otro auto, un poco corrido hacia un costado,
 lo mandás al trompo y queda girando y mirando para el otro lado. De frente, justo al medio,
@@ -57,12 +73,14 @@ tiran al auto de adelante.
 El 🛡️ escudo los para igual que a un misil. Cada auto muestra **en 3D, arriba del techo**, el
 power-up y el anti-poder que tiene guardados, así se ve de quién conviene cuidarse.
 
-**Velocidad:** el anfitrión elige en el lobby qué tan rápido andan los autos
-(🚐 Tranqui · 🚗 Normal · 🏎️ Rápida · 🔥 Demencial).
+**Velocidad y agarre:** el anfitrión elige en el lobby qué tan rápido andan los autos
+(🚐 Tranqui · 🚗 Normal · 🏎️ Rápida · 🔥 Demencial) y cuánto agarran las gomas
+(🧲 Pegado · 🚗 Normal · 🌀 Derrapón · 🧈 Jabón). El agarre multiplica el del asfalto de cada
+pista, así que en **Lago Congelado** con 🧈 Jabón el auto prácticamente patina solo.
 
 **Puntos por ronda:** 1.º 3, 2.º 2, 3.º 1 (con 2 o 3 jugadores se reparten menos puntos).
 Gana la copa el primero que llega al objetivo (5, 10 o 15). Si una ronda se alarga,
-llega la **muerte súbita**: la pantalla (o la arena) se achica.
+llega la **muerte súbita**: el círculo (o la arena) se achica.
 
 Se pueden sumar **bots** para completar lugares. En Batalla cada uno ve su propio auto
 con un minimapa; en los modos de pista todos ven la misma cámara (la del que va primero).
@@ -91,7 +109,10 @@ y confirmá. Render instala las dependencias, arranca `node server.js` y expone 
   transferencia de peso, círculo de fricción e inercia de giro propia, así que el auto
   sobrevira, subvira, se cruza si entrás pasado y se endereza con contravolante.
 - `shared/` — pistas y constantes usadas por servidor y clientes (power-ups, anti-poderes,
-  velocidades y alcance de la onda).
+  velocidades, agarres, radio de la zona y alcance de la onda).
+  Los obstáculos de cada pista se declaran en `shared/tracks.js` como `features`, con la fracción
+  de vuelta donde empiezan contada desde la largada; `buildTrack` los resuelve a posiciones
+  concretas y tanto la simulación como el render usan los mismos números.
 - `public/index.html`, `public/app.js` — cliente: inicio, lobby, interpolación, HUD 2D y controles.
 - `public/render3d.js` — render 3D con Three.js: pistas, arenas, autos, power-ups y efectos.
   El servidor sirve Three.js desde `node_modules` en `/vendor/three`, así que hace falta `npm install`.

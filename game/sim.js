@@ -3,8 +3,9 @@
 const Tracks = require('../shared/tracks.js');
 const Common = require('../shared/common.js');
 
-const { ROAD, CURB, WALL, project, projectGlobal, pointAt } = Tracks;
-const { COLORS, MODES, TARGETS, MAX_PLAYERS, VIEW_W, VIEW_H, CAR_R, ITEM_LIST, ANTIS, ANTI_LIST, SPEEDS,
+const { ROAD, CURB, WALL, JUMP_H, RAMP_LEN, BRIDGE_FUNNEL, project, projectGlobal, pointAt,
+  spanAt, forkHalf, holeGap, hazardAt } = Tracks;
+const { COLORS, MODES, TARGETS, MAX_PLAYERS, VIEW_R, CAR_R, ITEM_LIST, ANTIS, ANTI_LIST, SPEEDS, GRIPS,
   WAVE_R, WAVE_HIT, PHASES, F, INTRO_TIME } = Common;
 
 const TRACKS = Tracks.TRACK_DEFS.map(Tracks.buildTrack);
@@ -29,7 +30,7 @@ const r3 = (v) => Math.round(v * 1000) / 1000;
 // ------------------------------------------------------------------ partida
 function createGame() {
   return {
-    phase: 'lobby', mode: 'knockout', target: 10, speed: 1,
+    phase: 'lobby', mode: 'knockout', target: 10, speed: 1, grip: 1,
     players: [], world: null, phaseT: 0, round: 0,
     trackQueue: [], arenaIdx: 0, champion: null, roundWinner: null,
     events: [], nextId: 1, joinSeq: 0, clock: 0, countShown: 4, wid: 0, oid: 0,
@@ -91,9 +92,10 @@ function makeCar(W, p, x, y, a) {
     p, color: COLORS[p.color].hex, name: p.name, x, y, a, vx: 0, vy: 0, steer: 0, alive: true,
     item: null, roll: 0, rollItem: null, turbo: 0, shield: 0, spin: 0, spinDir: 1, av: 0, invuln: 0, oilImm: 0,
     anti: null, inv: 0, mud: 0, chk: 0,
+    air: 0, airTot: 0, z: 0,            // salto: segundos en el aire y altura
     hp: 3, hitFlash: 0, sdT: 0, seg: 0, s: 0, prog: 0, offroad: false, warn: 0, heldT: 0, skid: false, brake: false,
     speedMul: (p.kind === 'bot' ? 0.95 : 1) * (W.speed || 1), fxT: 0,
-    bot: p.kind === 'bot' ? { lane: rand(-60, 60), laneT: rand(1, 3), itemT: 1, antiT: rand(2, 5), skill: rand(0.8, 1), stuckT: 0 } : null,
+    bot: p.kind === 'bot' ? { lane: rand(-60, 60), laneT: rand(1, 3), itemT: 1, antiT: rand(2, 5), skill: rand(0.8, 1), stuckT: 0, forkSide: Math.random() < 0.5 ? -1 : 1 } : null,
   };
   if (!W.arena) {
     const pr = projectGlobal(W.map, x, y);
@@ -111,7 +113,8 @@ function makeWorld(g, kind, idx, parts) {
     id: ++g.wid, kind, idx, map, arena, items: MODES[g.mode].items, speed: g.speed,
     cars: [], mines: [], oils: [], missiles: [], boxes: [], abox: [], hooks: [], waves: [],
     time: 0, raceStart: 0, elimOrder: [], ending: 0, over: false, winner: null,
-    cam: { x: 0, y: 0 }, shrink: 1, safeR: Infinity, sdOn: false, leader: null, grip: map.theme.grip,
+    cam: { x: 0, y: 0 }, shrink: 1, safeR: Infinity, sdOn: false, leader: null,
+    grip: map.theme.grip * (g.grip || 1),
   };
   const order = [...parts].sort((a, b) => a.score - b.score || Math.random() - 0.5);
   if (!arena) {
@@ -125,6 +128,7 @@ function makeWorld(g, kind, idx, parts) {
     if (W.items) {
       for (let s = W.s0 + 900; s < W.s0 + map.L - 600; s += 1400) {
         for (const lane of [-80, 0, 80]) {
+          if (hazardAt(map, s, lane)) continue;   // nada de cajas en el agua o en un pozo
           const pt = pointAt(map, s);
           W.boxes.push({ x: r1(pt.x + pt.nx * lane), y: r1(pt.y + pt.ny * lane), active: true, t: 0 });
         }
@@ -132,6 +136,7 @@ function makeWorld(g, kind, idx, parts) {
       // las cajas negras van salteadas entre las amarillas, más cerca del medio
       for (let s = W.s0 + 1600; s < W.s0 + map.L - 600; s += 1400) {
         for (const lane of [-52, 52]) {
+          if (hazardAt(map, s, lane)) continue;
           const pt = pointAt(map, s);
           W.abox.push({ x: r1(pt.x + pt.nx * lane), y: r1(pt.y + pt.ny * lane), active: true, t: 0 });
         }
@@ -184,13 +189,16 @@ function damage(g, W, c, n) {
   c.hp -= n; c.hitFlash = 0.5;
   if (c.hp <= 0) eliminate(g, W, c, 'destroyed');
 }
+const MOTIVOS = {
+  camera: 'quedó atrás', pozo: 'se tragó el pozo', agua: 'se fue al agua', vacio: 'se cayó al vacío',
+};
 function eliminate(g, W, c, why) {
   if (!c.alive || W.over) return;
   if (W.cars.filter((x) => x.alive).length <= 1) { c.hp = Math.max(c.hp, 1); return; } // el último nunca muere
   c.alive = false; c.item = null; c.roll = 0; c.anti = null; c.inv = c.mud = c.chk = 0;
   W.elimOrder.push(c);
   ev(g, { e: 'elim', id: c.p.id, x: r1(c.x), y: r1(c.y), c: c.color });
-  ev(g, { e: 'toast', text: why === 'camera' ? `${c.name} quedó atrás` : `${c.name} explotó`, c: c.color });
+  ev(g, { e: 'toast', text: `${c.name} ${MOTIVOS[why] || 'explotó'}`, c: c.color });
   vibrate(g, c.p, [220, 80, 320]);
 }
 
@@ -306,7 +314,7 @@ function useItem(g, W, c) {
   const fx = Math.cos(c.a), fy = Math.sin(c.a);
   switch (it) {
     case 'turbo':
-      c.turbo = 1.7; ev(g, { e: 'sfx', s: 'turbo' }); break;
+      c.turbo = 1.35; ev(g, { e: 'sfx', s: 'turbo' }); break;
     case 'missile': {
       const sp = Math.max(980, Math.hypot(c.vx, c.vy) + 520);
       W.missiles.push({ id: ++g.oid, x: c.x + fx * 34, y: c.y + fy * 34, a: c.a, v: sp, owner: c, target: chooseMissileTarget(W, c), life: 2.8, age: 0, seg: c.seg });
@@ -365,6 +373,7 @@ const LOAD_K = 0.00045;        // transferencia de peso al acelerar y frenar
 const YAW_DAMP = 0.7;          // rozamiento de guiñada
 
 function stepCar(g, W, c, dt) {
+  if (c.air > 0) { stepAir(g, c, dt); return; }
   const inp = c.p.input;
   let L = !!inp.l, R = !!inp.r, brake = !!inp.b;
   if (c.inv > 0) { const t = L; L = R; R = t; }   // anti-poder: izquierda va a la derecha
@@ -384,11 +393,11 @@ function stepCar(g, W, c, dt) {
   if (W.arena) max *= 0.78;
   if (c.offroad) max *= 0.55;
   if (c.chk > 0) max *= 0.6;                      // anti-poder: motor ahogado
-  if (c.turbo > 0) { max *= 1.55; c.turbo -= dt; }
+  if (c.turbo > 0) { max *= 1.32; c.turbo -= dt; }   // turbo: un envión, no un cohete
   if (brake) max *= 0.3;
   let aLon;
   if (loose) aLon = -vLon * 1.5;
-  else if (vLon < max) aLon = ACCEL * (c.turbo > 0 ? 2.4 : 1);
+  else if (vLon < max) aLon = ACCEL * (c.turbo > 0 ? 1.8 : 1);
   else aLon = -(brake ? 1100 : 420);
 
   // --- carga sobre cada eje: frenar carga el tren delantero, acelerar el trasero
@@ -428,6 +437,10 @@ function stepCar(g, W, c, dt) {
   c.skid = Math.abs(slipR) > 0.22 || Math.abs(slipF) > 0.3 || (brake && vLon > 220) || loose;
   c.brake = brake;
 
+  tickTimers(g, c, dt);
+}
+
+function tickTimers(g, c, dt) {
   c.shield = Math.max(0, c.shield - dt);
   c.invuln = Math.max(0, c.invuln - dt);
   c.oilImm = Math.max(0, c.oilImm - dt);
@@ -440,11 +453,108 @@ function stepCar(g, W, c, dt) {
   if (c.roll > 0) { c.roll -= dt; if (c.roll <= 0) { c.item = c.rollItem; c.rollItem = null; vibrate(g, c.p, 40); } }
 }
 
+// Mientras vuela no hay gomas: conserva la velocidad y describe una parábola.
+function stepAir(g, c, dt) {
+  c.air -= dt;
+  c.x += c.vx * dt; c.y += c.vy * dt;
+  c.a = angNorm(c.a + c.av * dt);
+  c.av *= Math.exp(-1.6 * dt);
+  c.steer += clamp(-c.steer, -dt * 6, dt * 6);
+  c.turbo = Math.max(0, c.turbo - dt);
+  c.offroad = false; c.skid = false; c.brake = false;
+  const t = clamp(1 - c.air / (c.airTot || 1), 0, 1);
+  c.z = 4 * JUMP_H * t * (1 - t);
+  if (c.air <= 0) {
+    c.air = 0; c.z = 0; c.av *= 0.5;
+    ev(g, { e: 'land', x: r1(c.x), y: r1(c.y) });
+    vibrate(g, c.p, 30);
+  }
+  tickTimers(g, c, dt);
+}
+
+function launch(g, c, speed, largo) {
+  c.airTot = clamp((largo + 110) / speed, 0.42, 1.25);
+  c.air = c.airTot;
+  c.z = 1; c.spin = 0;
+  ev(g, { e: 'sfx', s: 'jump' });
+  ev(g, { e: 'jump', x: r1(c.x), y: r1(c.y) });
+  vibrate(g, c.p, 50);
+}
+
+// Se cayó al agua, a un pozo o al vacío.
+function fallOut(g, W, c, why) {
+  if (!c.alive) return;
+  ev(g, { e: 'splash', x: r1(c.x), y: r1(c.y), k: why === 'agua' ? 1 : 0, c: c.color });
+  ev(g, { e: 'sfx', s: why === 'agua' ? 'splash' : 'fall' });
+  c.vx = 0; c.vy = 0; c.av = 0; c.turbo = 0; c.air = 0; c.z = 0;
+  eliminate(g, W, c, why);
+  if (c.alive) rescue(W, c);     // el último nunca muere: lo sacamos de ahí
+}
+
+// Lo deja de nuevo en la pista, pasado el obstáculo.
+function rescue(W, c) {
+  const T = W.map;
+  let s = c.s;
+  for (let k = 0; k < 24; k++) { s += 80; if (!hazardAt(T, s, 0)) break; }
+  const pt = pointAt(T, s);
+  c.x = pt.x; c.y = pt.y; c.a = Math.atan2(pt.uy, pt.ux);
+  c.vx = 0; c.vy = 0; c.av = 0; c.spin = 0; c.invuln = 1.2;
+  const pr = projectGlobal(T, c.x, c.y);
+  c.seg = pr.seg; c.s = pr.s;
+}
+
 function wallFx(g, c, x, y, vn) {
   if (vn < 140 || c.fxT > 0) return;
   c.fxT = 0.12;
   ev(g, { e: 'spk', x: r1(x), y: r1(y), n: Math.min(14, Math.round(vn / 40)) });
   ev(g, { e: 'thud', v: r1(vn) });
+}
+
+// Pozos, agua, rampas, puentes y bifurcaciones. Devuelve hasta dónde llega la
+// baranda en este punto, o -1 si el auto se acaba de caer.
+function trackHazards(g, W, c, pr) {
+  const T = W.map;
+  let lim = WALL - CAR_R * 0.8;
+  if (!T.feats || !T.feats.length) return lim;
+  const air = c.air > 0;
+  const ad = Math.abs(pr.lat);
+  for (const f of T.feats) {
+    if (f.t === 'hole') {
+      if (air) continue;
+      if (Math.abs(holeGap(T, pr.s, f)) < f.r + CAR_R
+        && (c.x - f.x) ** 2 + (c.y - f.y) ** 2 < (f.r + CAR_R * 0.2) ** 2) { fallOut(g, W, c, 'pozo'); return -1; }
+      continue;
+    }
+    if (f.t === 'water') {
+      if (!air && ad < ROAD + CURB && spanAt(T, pr.s, f.ramp) >= 0) {
+        const sp = Math.hypot(c.vx, c.vy);
+        if (sp > 140) launch(g, c, sp, RAMP_LEN + f.len);   // tiene que cruzar rampa y agua
+      }
+      if (c.air <= 0 && spanAt(T, pr.s, f) >= 0) { fallOut(g, W, c, 'agua'); return -1; }
+      continue;
+    }
+    const d = spanAt(T, pr.s, f);
+    if (d < 0) continue;
+    if (f.t === 'bridge') {
+      // en las puntas las barandas se cierran en embudo; en el medio no hay nada
+      const borde = Math.min(d, f.len - d);
+      if (borde < BRIDGE_FUNNEL) lim = Math.min(lim, f.w + (lim - f.w) * (1 - borde / BRIDGE_FUNNEL));
+      else if (!air && ad > f.w + CAR_R * 0.4) { fallOut(g, W, c, 'vacio'); return -1; }
+    } else if (f.t === 'fork') {
+      const half = forkHalf(f, d) + CAR_R * 0.6;
+      if (ad < half) {
+        const sg = pr.lat >= 0 ? 1 : -1, nx = pr.nx * sg, ny = pr.ny * sg;
+        c.x += nx * (half - ad); c.y += ny * (half - ad);
+        const vn = c.vx * nx + c.vy * ny;
+        if (vn < 0) {
+          c.vx -= nx * vn * 1.3; c.vy -= ny * vn * 1.3;
+          c.vx *= 0.98; c.vy *= 0.98;
+          wallFx(g, c, c.x - nx * CAR_R, c.y - ny * CAR_R, -vn);
+        }
+      }
+    }
+  }
+  return lim;
 }
 
 function trackConstrain(g, W, c) {
@@ -453,9 +563,10 @@ function trackConstrain(g, W, c) {
   let ds = pr.s - c.s;
   if (ds > T.L / 2) ds -= T.L; else if (ds < -T.L / 2) ds += T.L;
   c.prog += ds; c.s = pr.s; c.seg = pr.seg;
+  const lim = trackHazards(g, W, c, pr);
+  if (lim < 0) return;
   const ad = Math.abs(pr.lat);
-  c.offroad = ad > ROAD + CURB * 0.6;
-  const lim = WALL - CAR_R * 0.8;
+  c.offroad = c.air <= 0 && ad > ROAD + CURB * 0.6;
   if (ad > lim) {
     const sg = Math.sign(pr.lat), nx = pr.nx * sg, ny = pr.ny * sg;
     c.x -= nx * (ad - lim); c.y -= ny * (ad - lim);
@@ -548,6 +659,7 @@ function carCollisions(g, W) {
     const afx = Math.cos(a.a) * BODY_OFF, afy = Math.sin(a.a) * BODY_OFF;
     for (let j = i + 1; j < cs.length; j++) {
       const b = cs[j]; if (!b.alive) continue;
+      if (a.air > 0 || b.air > 0) continue;        // en el aire no se chocan
       const cdx = b.x - a.x, cdy = b.y - a.y;
       if (cdx * cdx + cdy * cdy >= REACH * REACH) continue;
       const bfx = Math.cos(b.a) * BODY_OFF, bfy = Math.sin(b.a) * BODY_OFF;
@@ -611,10 +723,38 @@ function botThink(W, c, dt) {
       const dx = m.x - T.xs[i], dy = m.y - T.ys[i];
       if (dx * dx + dy * dy < 150 * 150) { const side = dx * -T.ty[i] + dy * T.tx[i]; lane = side > 0 ? -90 : 90; }
     }
+    // obstáculos: esquivar pozos, centrarse en el puente, elegir un lado en la bifurcación
+    let saltando = false;
+    const pozos = [];
+    const sLook = T.cum[i];
+    for (const f of T.feats || []) {
+      if (f.t === 'hole') {
+        if (Math.abs(holeGap(T, sLook, f)) < f.r + 190) pozos.push(f);
+        continue;
+      }
+      if (f.t === 'water') {
+        if (spanAt(T, sLook, f) >= 0 || spanAt(T, sLook, f.ramp) >= 0) { lane = 0; saltando = true; }
+        continue;
+      }
+      const d = spanAt(T, sLook, f);
+      if (d < 0) continue;
+      if (f.t === 'bridge') lane = clamp(lane, -(f.w - 32), f.w - 32);
+      else if (f.t === 'fork') lane = b.forkSide * (f.w + 72);
+    }
+    if (pozos.length) {
+      // probar carriles y quedarse con el que pase más lejos de todos los pozos
+      let mejor = lane, hueco = -1e9;
+      for (const L of [-125, -85, -45, 0, 45, 85, 125]) {
+        let d = 1e9;
+        for (const f of pozos) d = Math.min(d, Math.abs(L - f.lat) - f.r);
+        if (d > hueco + 6 || (d > hueco - 6 && Math.abs(L - lane) < Math.abs(mejor - lane))) { hueco = Math.max(hueco, d); mejor = L; }
+      }
+      lane = mejor;
+    }
     tx = T.xs[i] - T.ty[i] * lane; ty = T.ys[i] + T.tx[i] * lane;
     const j = (c.seg + look * 2) % T.N;
     const dot = T.tx[c.seg] * T.tx[j] + T.ty[c.seg] * T.ty[j];
-    if (dot < 0.35 && speed > 330 + 80 * b.skill) brake = true;
+    if (!saltando && dot < 0.35 && speed > 330 + 80 * b.skill) brake = true;
   } else {
     const A = W.map;
     let target = null;
@@ -786,6 +926,7 @@ function stepWorld(g, W, dt) {
     let boom = false;
     for (const c of W.cars) {
       if (!c.alive) continue;
+      if (c.air > 0) continue;                   // la mina no alcanza al que está volando
       if (c === m.owner ? m.ownArm > 0 : m.arm > 0) continue;
       if ((c.x - m.x) ** 2 + (c.y - m.y) ** 2 < (CAR_R + 13) ** 2) { hit(g, W, c, 'mine', m.x, m.y); boom = true; break; }
     }
@@ -800,7 +941,7 @@ function stepWorld(g, W, dt) {
     o.life -= dt; o.ownT -= dt;
     if (o.life <= 0) { W.oils.splice(i, 1); continue; }
     for (const c of W.cars) {
-      if (!c.alive || c.spin > 0 || (c === o.owner && o.ownT > 0)) continue;
+      if (!c.alive || c.spin > 0 || c.air > 0 || (c === o.owner && o.ownT > 0)) continue;
       if ((c.x - o.x) ** 2 + (c.y - o.y) ** 2 < (o.r + 6) ** 2) hit(g, W, c, 'oil', o.x, o.y);
     }
   }
@@ -826,13 +967,13 @@ function rules(g, W, dt) {
   if (!W.arena) {
     W.shrink = 1 - (1 - KO_SD_MIN) * clamp((t - KO_SD_START) / KO_SD_LEN, 0, 1);
     if (t > KO_SD_START && !W.sdOn) { W.sdOn = true; ev(g, { e: 'sfx', s: 'sudden' }); ev(g, { e: 'toast', text: '¡MUERTE SÚBITA! La pantalla se achica', c: '#ff4d4d' }); }
-    const hw = (VIEW_W / 2) * W.shrink, hh = (VIEW_H / 2) * W.shrink;
+    const R = VIEW_R * W.shrink;
     const out = [];
     for (const c of W.cars) {
       if (!c.alive) continue;
-      const ex = Math.abs(c.x - W.cam.x) - hw, ey = Math.abs(c.y - W.cam.y) - hh;
-      c.warn = Math.max(ex, ey) > -130 ? 1 : 0;
-      if (ex > 10 || ey > 10) out.push(c);
+      const d = Math.hypot(c.x - W.cam.x, c.y - W.cam.y);
+      c.warn = d > R - 130 ? 1 : 0;
+      if (d > R + 10) out.push(c);
     }
     out.sort((a, b) => a.prog - b.prog).forEach((c) => eliminate(g, W, c, 'camera'));
   } else if (t > AR_SD_START) {
@@ -950,6 +1091,7 @@ function command(g, p, isTv, a, v) {
     case 'mode': if (MODES[v] && g.phase === 'lobby') g.mode = v; break;
     case 'target': if (TARGETS.includes(Number(v)) && g.phase === 'lobby') g.target = Number(v); break;
     case 'speed': if (g.phase === 'lobby' && SPEEDS.some((x) => x.v === Number(v))) g.speed = Number(v); break;
+    case 'grip': if (g.phase === 'lobby' && GRIPS.some((x) => x.v === Number(v))) g.grip = Number(v); break;
     case 'start': if (g.phase === 'lobby') startMatch(g); break;
     case 'again': if (g.phase === 'matchover') startMatch(g); break;
     case 'lobby': if (g.phase === 'matchover' || g.phase === 'roundover') goLobby(g); break;
@@ -967,7 +1109,7 @@ function setConnected(g, p, on, now) {
 function meta(g) {
   const W = g.world, v = vip(g);
   return {
-    t: 'st', phase: g.phase, mode: g.mode, target: g.target, speed: g.speed, round: g.round, vip: v ? v.id : null,
+    t: 'st', phase: g.phase, mode: g.mode, target: g.target, speed: g.speed, grip: g.grip, round: g.round, vip: v ? v.id : null,
     players: g.players.map((p) => ({ id: p.id, name: p.name, color: p.color, kind: p.kind, on: p.connected, score: p.score, gain: p.lastGain, place: p.lastPlace })),
     roundWinner: g.roundWinner ? g.roundWinner.id : null,
     champion: g.champion ? g.champion.id : null,
@@ -1004,8 +1146,9 @@ function snapshot(g) {
       if (c.mud > 0) f |= F.MUD;
       if (c.chk > 0) f |= F.CHOKE;
       if (hooked.has(c)) f |= F.HOOK;
+      if (c.air > 0) f |= F.AIR;
       return [c.p.id, r1(c.x), r1(c.y), r3(c.a), r2(c.steer), f, c.hp,
-        ITEM_LIST.indexOf(c.roll > 0 ? 'roll' : c.item || ''), ANTI_LIST.indexOf(c.anti || '')];
+        ITEM_LIST.indexOf(c.roll > 0 ? 'roll' : c.item || ''), ANTI_LIST.indexOf(c.anti || ''), r1(c.z)];
     }),
     m: W.missiles.map((m) => [m.id, r1(m.x), r1(m.y), r2(m.a)]),
     n: W.mines.map((m) => [m.id, r1(m.x), r1(m.y), m.life < 4 ? 1 : 0]),

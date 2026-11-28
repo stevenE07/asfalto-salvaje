@@ -2,10 +2,16 @@
 (function (root) {
   'use strict';
 
-  const ROAD = 130;   // medio ancho del asfalto
+  const ROAD = 160;   // medio ancho del asfalto
   const CURB = 14;    // ancho del cordón
-  const WALL = 228;   // distancia del centro al muro
+  const WALL = 255;   // distancia del centro al muro
   const STEP = 20;    // separación entre muestras de la línea central
+
+  // Obstáculos de pista
+  const RAMP_LEN = 120;       // la rampa que precede al agua
+  const JUMP_H = 92;          // altura del salto
+  const FORK_TAPER = 130;     // cuánto tardan en abrirse las puntas de la isla
+  const BRIDGE_FUNNEL = 150;  // embudo de barandas al entrar y salir del puente
 
   const THEMES = {
     valle: {
@@ -32,6 +38,18 @@
       road: '#2c2e3c', line: 'rgba(63,240,255,0.55)', edge: 'rgba(255,63,210,0.8)',
       decor: ['building', 'building', 'lamp', 'building'], grip: 0.97, night: true,
     },
+    hardcore: {
+      ground: '#2e2024', dots: ['#3a282c', '#26191d', '#44312f'], runoff: '#4a3430',
+      wallA: '#f2c230', wallB: '#1d1517', curbA: '#e05a1f', curbB: '#241a1c',
+      road: '#35303a', line: 'rgba(255,190,80,0.5)', edge: 'rgba(255,190,80,0.75)',
+      decor: ['rock', 'rock', 'skull', 'cactus', 'rock'], grip: 0.9,
+    },
+    lago: {
+      ground: '#bcd9e8', dots: ['#d6e9f3', '#a9cadd', '#e8f4fa'], runoff: '#9fc3d8',
+      wallA: '#1f4f7a', wallB: '#dff1fb', curbA: '#1f4f7a', curbB: '#dff1fb',
+      road: '#8fb6cc', line: 'rgba(255,255,255,0.6)', edge: 'rgba(255,255,255,0.9)',
+      decor: ['pine', 'ice', 'ice', 'snowman', 'ice'], grip: 0.55,  // hielo pulido: casi no agarra
+    },
     fabrica: {
       ground: '#5b6068', dots: ['#646a73', '#525760', '#6c727b'], runoff: '#5b6068',
       wallA: '#f2c230', wallB: '#26282c', road: '#5b6068', grip: 0.95,
@@ -42,18 +60,61 @@
     {
       name: 'Valle Verde', theme: 'valle',
       points: [[0, 0], [1800, -200], [3000, 0], [3600, 700], [3300, 1500], [2400, 1600], [1800, 1100], [1100, 1500], [300, 1700], [-500, 1200], [-600, 400]],
+      features: [
+        { t: 'water', at: 0.17, len: 240 },
+        { t: 'hole', at: 0.55, lat: -78, r: 62 },
+        { t: 'hole', at: 0.57, lat: 82, r: 62 },
+      ],
     },
     {
       name: 'Duna Roja', theme: 'duna',
       points: [[0, 0], [2400, -100], [3000, 400], [2700, 1000], [1800, 900], [1400, 1400], [2000, 2000], [3200, 2100], [3500, 2700], [2800, 3100], [800, 3000], [-200, 2400], [-400, 1200]],
+      features: [
+        { t: 'hole', at: 0.18, lat: 0, r: 72 },
+        { t: 'fork', at: 0.45, len: 760, w: 56 },
+        { t: 'water', at: 0.66, len: 230 },
+      ],
     },
     {
       name: 'Puerto Helado', theme: 'hielo',
       points: [[0, 0], [1500, -300], [2800, 0], [3400, 800], [2900, 1500], [3300, 2200], [2700, 2900], [1600, 2850], [1150, 2200], [600, 2000], [100, 2500], [-600, 2200], [-500, 1000]],
+      features: [
+        { t: 'bridge', at: 0.30, len: 420, w: 78 },
+        { t: 'hole', at: 0.66, lat: -72, r: 60 },
+      ],
     },
     {
       name: 'Neón Nocturno', theme: 'neon',
       points: [[0, 0], [2000, 0], [2400, 300], [2400, 1200], [2800, 1600], [3600, 1600], [3900, 2000], [3700, 2700], [2000, 2800], [1600, 2400], [1500, 1600], [1000, 1300], [300, 1500], [-300, 1000], [-300, 300]],
+      features: [
+        { t: 'fork', at: 0.26, len: 700, w: 54 },
+        { t: 'water', at: 0.54, len: 240 },
+        { t: 'hole', at: 0.84, lat: 74, r: 58 },
+      ],
+    },
+    {
+      // La pista brava: tiene de todo y casi no deja respirar.
+      name: 'Infierno Oxidado', theme: 'hardcore',
+      points: [[0, 0], [1600, 0], [2600, 300], [3200, 1000], [3000, 1800], [2200, 2300], [1200, 2200], [600, 2600], [-400, 2400], [-800, 1600], [-600, 700]],
+      features: [
+        { t: 'water', at: 0.09, len: 250 },
+        { t: 'hole', at: 0.26, lat: -84, r: 64 },
+        { t: 'hole', at: 0.28, lat: 88, r: 64 },
+        { t: 'bridge', at: 0.36, len: 460, w: 72 },
+        { t: 'water', at: 0.53, len: 240 },
+        { t: 'fork', at: 0.62, len: 820, w: 60 },
+        { t: 'hole', at: 0.80, lat: 0, r: 72 },
+      ],
+    },
+    {
+      // Hielo pulido: el tema 'lago' agarra la mitad que el asfalto seco.
+      name: 'Lago Congelado', theme: 'lago',
+      points: [[0, 0], [1400, -200], [2600, 100], [3200, 800], [2900, 1600], [2000, 1900], [1000, 1700], [200, 2000], [-600, 1500], [-700, 600]],
+      features: [
+        { t: 'fork', at: 0.33, len: 680, w: 55 },
+        { t: 'hole', at: 0.50, lat: -74, r: 60 },
+        { t: 'water', at: 0.67, len: 230 },
+      ],
     },
   ];
 
@@ -148,11 +209,70 @@
       }
       if (straight > best + 0.5) { best = straight; startIdx = i; }
     }
-    return {
+    const T = {
       kind: 'track', name: def.name, theme: THEMES[def.theme], themeKey: def.theme,
-      N, L: cum[N], cum, xs, ys, tx, ty, startIdx,
+      N, L: cum[N], cum, xs, ys, tx, ty, startIdx, feats: [],
       bounds: { minX: minX - 700, minY: minY - 700, maxX: maxX + 700, maxY: maxY + 700 },
     };
+    T.feats = buildFeats(T, def.features || []);
+    return T;
+  }
+
+  // ------------------------------------------------------------- obstáculos
+  // `at` es la fracción de vuelta contada DESDE LA LARGADA, así que una pista
+  // siempre tiene sus obstáculos donde el que la diseñó los puso.
+  function buildFeats(T, list) {
+    const base = T.cum[T.startIdx];
+    const wrap = (s) => ((s % T.L) + T.L) % T.L;
+    return list.map((f) => {
+      const s0 = wrap(base + f.at * T.L);
+      if (f.t === 'hole') {
+        const p = pointAt(T, s0), lat = f.lat || 0;
+        return { t: 'hole', s: s0, lat, r: f.r || 64, x: p.x + p.nx * lat, y: p.y + p.ny * lat };
+      }
+      if (f.t === 'water') {
+        const len = f.len || 240;
+        return { t: 'water', s0, len, ramp: { t: 'ramp', s0: wrap(s0 - RAMP_LEN), len: RAMP_LEN } };
+      }
+      return { t: f.t, s0, len: f.len || 400, w: f.w || 72 };
+    });
+  }
+
+  // Cuánto llevás recorrido dentro del tramo, o -1 si el punto quedó afuera.
+  function spanAt(T, s, f) {
+    let d = s - f.s0;
+    if (d < 0) d += T.L;
+    if (d >= T.L) d -= T.L;
+    return d < f.len ? d : -1;
+  }
+  const smooth01 = (t) => { t = t < 0 ? 0 : t > 1 ? 1 : t; return t * t * (3 - 2 * t); };
+  // La isla de la bifurcación nace y muere en punta para que no te clave de golpe.
+  const forkHalf = (f, d) => f.w * smooth01(Math.min(d, f.len - d) / FORK_TAPER);
+  // Distancia al centro de un pozo a lo largo de la pista (con la vuelta cerrada)
+  function holeGap(T, s, f) {
+    let d = s - f.s;
+    if (d > T.L / 2) d -= T.L;
+    if (d < -T.L / 2) d += T.L;
+    return d;
+  }
+
+  // ¿Ese punto de la pista es peligroso? Sirve para no tirar cajas al agua.
+  function hazardAt(T, s, lat) {
+    for (const f of T.feats || []) {
+      if (f.t === 'hole') {
+        if (Math.abs(holeGap(T, s, f)) < f.r + 70 && Math.abs(lat - f.lat) < f.r + 70) return true;
+        continue;
+      }
+      if (f.t === 'water') {
+        if (spanAt(T, s, f) >= 0 || spanAt(T, s, f.ramp) >= 0) return true;
+        continue;
+      }
+      const d = spanAt(T, s, f);
+      if (d < 0) continue;
+      if (f.t === 'bridge' && Math.abs(lat) > f.w - 34) return true;
+      if (f.t === 'fork' && Math.abs(lat) < f.w + 76) return true;
+    }
+    return false;
   }
 
   // Proyecta un punto sobre la pista buscando cerca del segmento "hint".
@@ -213,7 +333,11 @@
     };
   }
 
-  const api = { ROAD, CURB, WALL, STEP, THEMES, TRACK_DEFS, ARENA_DEFS, buildTrack, buildArena, project, projectGlobal, pointAt };
+  const api = {
+    ROAD, CURB, WALL, STEP, RAMP_LEN, JUMP_H, FORK_TAPER, BRIDGE_FUNNEL,
+    THEMES, TRACK_DEFS, ARENA_DEFS, buildTrack, buildArena,
+    project, projectGlobal, pointAt, spanAt, forkHalf, holeGap, hazardAt, smooth01,
+  };
   root.Tracks = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

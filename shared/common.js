@@ -41,6 +41,14 @@
     { v: 1.45, name: 'Demencial', icon: '🔥' },
   ];
 
+  // Cuánto agarran las gomas: multiplica el agarre del asfalto de cada pista
+  const GRIPS = [
+    { v: 1.25, name: 'Pegado', icon: '🧲' },
+    { v: 1, name: 'Normal', icon: '🚗' },
+    { v: 0.82, name: 'Derrapón', icon: '🌀' },
+    { v: 0.65, name: 'Jabón', icon: '🧈' },
+  ];
+
   const MODES = {
     knockout: { name: 'Eliminación', icon: '🏁', desc: 'La cámara sigue al que va primero. Si te quedás fuera de la pantalla, quedás eliminado.', items: true, arena: false },
     pure: { name: 'Carrera Pura', icon: '🏎️', desc: 'Igual que Eliminación pero sin power-ups: solo manejo.', items: false, arena: false },
@@ -52,15 +60,17 @@
   // Bits de estado de cada auto
   const F = {
     ALIVE: 1, SPIN: 2, SHIELD: 4, TURBO: 8, OFFROAD: 16, SKID: 32, WARN: 64, FLASH: 128, SHIELD_LOW: 256, BRAKE: 512,
-    INV: 1024, MUD: 2048, CHOKE: 4096, HOOK: 8192,
+    INV: 1024, MUD: 2048, CHOKE: 4096, HOOK: 8192, AIR: 16384,
   };
 
   const api = {
-    COLORS, ITEMS, ITEM_LIST, ANTIS, ANTI_LIST, SPEEDS, MODES, PHASES, F,
+    COLORS, ITEMS, ITEM_LIST, ANTIS, ANTI_LIST, SPEEDS, GRIPS, MODES, PHASES, F,
     TARGETS: [5, 10, 15],
     WAVE_R: 215, WAVE_HIT: 130,   // alcance de la onda expansiva
     MAX_PLAYERS: 8,
-    VIEW_W: 1400, VIEW_H: 790, // zona visible (y de eliminación) de la cámara compartida
+    VIEW_W: 1400, VIEW_H: 790, // zona visible de la cámara compartida
+    // La zona de eliminación es el círculo que contiene a ese rectángulo
+    VIEW_R: Math.round(Math.hypot(1400 / 2, 790 / 2)),
     CAR_R: 19,
     INTRO_TIME: 0.6 + 0.8 * 3,
   };

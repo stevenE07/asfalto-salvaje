@@ -2,8 +2,8 @@
 // El servidor simula; acá se interpolan las instantáneas, se dibuja y se mandan los controles.
 (() => {
   'use strict';
-  const { COLORS, ITEMS, ITEM_LIST, ANTIS, ANTI_LIST, SPEEDS, MODES, PHASES, F, TARGETS, MAX_PLAYERS,
-    VIEW_W, VIEW_H, WAVE_R, INTRO_TIME } = window.Common;
+  const { COLORS, ITEMS, ITEM_LIST, ANTIS, ANTI_LIST, SPEEDS, GRIPS, MODES, PHASES, F, TARGETS, MAX_PLAYERS,
+    VIEW_W, VIEW_H, VIEW_R, WAVE_R, INTRO_TIME } = window.Common;
   const { ROAD, CURB, WALL, pointAt } = window.Tracks;
   const TRACKS = window.Tracks.TRACK_DEFS.map(window.Tracks.buildTrack);
   const ARENAS = window.Tracks.ARENA_DEFS.map(window.Tracks.buildArena);
@@ -98,7 +98,7 @@
     S.me = { id: null, tv: false, code: null };
     S.meta = null; S.world = null; S.snaps = []; S.cars.clear();
     history.replaceState(null, '', location.pathname);
-    ['lobby', 'roundOver', 'matchOver', 'controls', 'statusPill', 'rotateHint'].forEach((id) => $(id).classList.add('hidden'));
+    ['lobby', 'roundOver', 'matchOver', 'controls', 'statusPill', 'rotateHint', 'btnQuit'].forEach((id) => $(id).classList.add('hidden'));
     $('home').classList.remove('hidden');
     $('homeErr').textContent = err || '';
     document.body.classList.remove('ingame');
@@ -136,6 +136,7 @@
     const m = S.meta;
     const inGame = m.phase !== 'lobby';
     document.body.classList.toggle('ingame', inGame);
+    $('btnQuit').classList.toggle('hidden', !inGame);
     $('lobby').classList.toggle('hidden', inGame);
     if (!inGame) renderLobby();
     // resultados
@@ -175,6 +176,7 @@
     $('modes').innerHTML = Object.entries(MODES).map(([k, v]) => `<button class="ghost ${m.mode === k ? 'sel' : ''}" data-cmd="mode" data-v="${k}" ${cmd ? '' : 'disabled'}>${v.icon} ${v.name}</button>`).join('');
     $('targets').innerHTML = TARGETS.map((t) => `<button class="ghost ${m.target === t ? 'sel' : ''}" data-cmd="target" data-v="${t}" ${cmd ? '' : 'disabled'} style="min-width:58px">${t}</button>`).join('');
     $('speeds').innerHTML = SPEEDS.map((sp) => `<button class="ghost ${m.speed === sp.v ? 'sel' : ''}" data-cmd="speed" data-v="${sp.v}" ${cmd ? '' : 'disabled'}>${sp.icon} ${sp.name}</button>`).join('');
+    $('grips').innerHTML = GRIPS.map((gp) => `<button class="ghost ${m.grip === gp.v ? 'sel' : ''}" data-cmd="grip" data-v="${gp.v}" ${cmd ? '' : 'disabled'}>${gp.icon} ${gp.name}</button>`).join('');
     $('modeDesc').textContent = MODES[m.mode].desc;
     const n = m.players.filter((p) => p.kind === 'bot' || p.on).length;
     const bots = m.players.filter((p) => p.kind === 'bot').length;
@@ -246,10 +248,25 @@
     SFX.ensure();
     net.send(/^[A-Z]{4}$/.test(code) ? { t: 'join', code, tv: true } : { t: 'create', tv: true });
   });
-  $('btnLeave').addEventListener('click', () => {
+  function salirDeLaSala() {
     net.send({ t: 'leave' });
     sess.code = null; sess.token = null; saveSess();
     leaveToHome('');
+  }
+  $('btnLeave').addEventListener('click', salirDeLaSala);
+  // En carrera hay que tocarlo dos veces: que no te eche un dedazo sin querer.
+  let quitArmado = null;
+  function desarmarQuit() {
+    clearTimeout(quitArmado); quitArmado = null;
+    $('btnQuit').classList.remove('armado');
+    $('btnQuit').textContent = '🚪';
+  }
+  $('btnQuit').addEventListener('click', () => {
+    SFX.click();
+    if (quitArmado) { desarmarQuit(); salirDeLaSala(); return; }
+    $('btnQuit').classList.add('armado');
+    $('btnQuit').textContent = '🚪 ¿Seguro?';
+    quitArmado = setTimeout(desarmarQuit, 3000);
   });
   document.addEventListener('click', (e) => {
     const b = e.target.closest('[data-cmd]');
@@ -468,6 +485,7 @@
       v.a = angLerp(ca[3], cb[3], t); v.steer = lerp(ca[4], cb[4], t);
       const src = t > 0.5 ? cb : ca;
       v.f = src[5]; v.hp = src[6]; v.item = ITEM_LIST[cb[7]] || null; v.anti = ANTI_LIST[cb[8]] || null;
+      v.z = lerp(ca[9] || 0, cb[9] || 0, t);
       v.alive = !!(v.f & F.ALIVE);
       v.color = p ? COLORS[p.color] : COLORS[0];
       v.name = p ? p.name : '?';
@@ -526,6 +544,19 @@
         break;
       case 'wave': S.waves.push({ x: e.x, y: e.y, r: 20, max: WAVE_R, life: 0.45 }); SFX.wave(); S.shake = Math.max(S.shake, 0.35); break;
       case 'block': sparks(e.x, e.y, 16, '#7ff3ff'); SFX.block(); break;
+      case 'jump': SFX.jump(); break;
+      case 'land':
+        SFX.land();
+        for (let i = 0; i < 9; i++) part({ k: 'smoke', x: e.x + rand(-16, 16), y: e.y + rand(-16, 16), vx: rand(-90, 90), vy: rand(-90, 90), life: 0.45, max: 0.45, size: 9, grow: 26, drag: 2, light: true });
+        break;
+      case 'splash':
+        SFX[e.k ? 'splash' : 'fall']();
+        S.shake = Math.max(S.shake, 0.3);
+        for (let i = 0; i < 22; i++) {
+          const an = Math.random() * TAU, sp = rand(40, 260);
+          part({ k: e.k ? 'spark' : 'smoke', x: e.x, y: e.y, vx: Math.cos(an) * sp, vy: Math.sin(an) * sp, life: rand(0.3, 0.8), max: 0.8, size: e.k ? 4 : 14, grow: e.k ? 0 : 20, drag: 2, color: e.k ? '#8fd7ff' : '#3a3242' });
+        }
+        break;
       case 'apick':
         SFX.apick();
         for (let i = 0; i < 10; i++) part({ k: 'spark', x: e.x, y: e.y, vx: rand(-260, 260), vy: rand(-260, 260), life: 0.4, max: 0.4, size: 3, drag: 3, color: pick(['#b98cff', '#6f3bd6', '#ffffff']) });
@@ -714,7 +745,7 @@
     ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.lineJoin = 'round';
     for (const c of S.cars.values()) {
       if (!c.alive) continue;
-      const p = R.project(c.x, c.y, 44);
+      const p = R.project(c.x, c.y, 44 + (c.z || 0));
       if (!p[2]) continue;
       const k = R.scaleAt(c.x, c.y);
       const fs = clamp(Math.round(26 * k), 11, 19);
@@ -734,6 +765,41 @@
         }
       }
     }
+    drawFueraDeCuadro(W);
+  }
+
+  // La zona de eliminación es un círculo más grande que la pantalla, así que
+  // podés estar vivo y no verte: una flecha en el borde dice para dónde quedaste.
+  function drawFueraDeCuadro(W) {
+    if (W.arena || W.camX == null) return;
+    const me = S.cars.get(S.me.id);
+    if (!me || !me.alive) return;
+    const p = R.project(me.x, me.y, 30);
+    const w = S.cssW, h = S.cssH, m = 54;
+    if (p[2] && p[0] > m && p[0] < w - m && p[1] > m && p[1] < h - m) return;
+    let dx = p[0] - w / 2, dy = p[1] - h / 2;
+    if (!p[2]) { dx = -dx; dy = -dy; }
+    const l = Math.hypot(dx, dy) || 1;
+    dx /= l; dy /= l;
+    const k = Math.min((w / 2 - m) / Math.max(1e-3, Math.abs(dx)), (h / 2 - m) / Math.max(1e-3, Math.abs(dy)));
+    const sx = w / 2 + dx * k, sy = h / 2 + dy * k;
+    const falta = Math.round(VIEW_R * (W.shrink || 1) - Math.hypot(me.x - W.camX, me.y - W.camY));
+    const urgente = falta < 220;
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(Math.atan2(dy, dx));
+    ctx.fillStyle = urgente ? '#ff4d4d' : me.color.hex;
+    ctx.strokeStyle = 'rgba(0,0,0,0.8)'; ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(20, 0); ctx.lineTo(-13, -14); ctx.lineTo(-6, 0); ctx.lineTo(-13, 14);
+    ctx.closePath(); ctx.stroke(); ctx.fill();
+    ctx.restore();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = '800 13px "Rubik", system-ui';
+    const txt = urgente ? '¡VOLVÉ!' : `VOS · ${Math.max(0, falta)}`;
+    const tx = sx - dx * 26, ty = sy - dy * 26;
+    ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,0.8)'; ctx.strokeText(txt, tx, ty);
+    ctx.fillStyle = urgente ? '#ff8f8f' : '#ffffff'; ctx.fillText(txt, tx, ty);
   }
 
   function drawMinimap(W) {
