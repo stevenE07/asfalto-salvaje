@@ -19,9 +19,10 @@ Opcional: en una tele o proyector se puede abrir la página y elegir
 Como cada uno juega desde su propia pantalla, **cada jugador usa su propio teclado**
 (o la pantalla táctil de su celular).
 
-- Celular: botones **◀ ▶** para doblar (los dos juntos frenan) y botón redondo para el power-up.
-  Conviene ponerlo **horizontal**.
-- Compu: **← →** o **A D** para doblar, **↓ / S** frenar, **↑ / W / espacio** power-up.
+- Celular: botones **◀ ▶** para doblar (los dos juntos frenan), botón redondo grande para el
+  power-up y el violeta de arriba para el anti-poder. Conviene ponerlo **horizontal**.
+- Compu: **← →** o **A D** para doblar, **↓ / S** frenar, **↑ / W / espacio** power-up,
+  **E** anti-poder.
 - Cada uno puede cambiar sus teclas en **⌨️ Mis teclas** (en el inicio o en el lobby). La elección
   queda guardada en esa compu, así que no afecta a los demás jugadores.
 
@@ -37,7 +38,27 @@ Como cada uno juega desde su propia pantalla, **cada jugador usa su propio tecla
 lo mandás al trompo y queda girando y mirando para el otro lado. De frente, justo al medio,
 sólo lo empujás. El escudo lo salva (se rompe y aguanta el golpe).
 
-**Power-ups:** ⚡ Turbo · 🚀 Misil teledirigido · 💣 Mina · 🛢️ Aceite · 🛡️ Escudo · 💥 Onda expansiva.
+**Power-ups** (cajas amarillas): ⚡ Turbo · 🚀 Misil teledirigido · 💣 Mina · 🛢️ Aceite ·
+🛡️ Escudo · 💥 Onda expansiva · 🪝 Gancho.
+
+El **🪝 gancho** es para remontar: sale casi siempre a los que van últimos y se cuelga del auto
+más adelantado que alcance la soga (hasta 1500 px), que te lleva de un tirón hasta donde está.
+Si no hay nadie lo bastante adelante, se convierte en un turbo.
+
+**Anti-poderes** (cajas negras, repartidas por el mapa): se guardan en una ranura aparte y se le
+tiran al auto de adelante.
+
+| Anti-poder | Qué le hace |
+| --- | --- |
+| 🔄 Al revés | Le da vuelta los controles 7 segundos: izquierda dobla a la derecha |
+| 🪣 Barrazo | Le ensucia el parabrisas 5 segundos |
+| 🐌 Ahogo | Le ahoga el motor 5 segundos (anda al 60%) |
+
+El 🛡️ escudo los para igual que a un misil. Cada auto muestra **en 3D, arriba del techo**, el
+power-up y el anti-poder que tiene guardados, así se ve de quién conviene cuidarse.
+
+**Velocidad:** el anfitrión elige en el lobby qué tan rápido andan los autos
+(🚐 Tranqui · 🚗 Normal · 🏎️ Rápida · 🔥 Demencial).
 
 **Puntos por ronda:** 1.º 3, 2.º 2, 3.º 1 (con 2 o 3 jugadores se reparten menos puntos).
 Gana la copa el primero que llega al objetivo (5, 10 o 15). Si una ronda se alarga,
@@ -69,8 +90,9 @@ y confirmá. Render instala las dependencias, arranca `node server.js` y expone 
   La física es un modelo de bicicleta con fuerzas de neumático: ángulos de deriva por eje,
   transferencia de peso, círculo de fricción e inercia de giro propia, así que el auto
   sobrevira, subvira, se cruza si entrás pasado y se endereza con contravolante.
-- `shared/` — pistas y constantes usadas por servidor y clientes.
+- `shared/` — pistas y constantes usadas por servidor y clientes (power-ups, anti-poderes,
+  velocidades y alcance de la onda).
 - `public/index.html`, `public/app.js` — cliente: inicio, lobby, interpolación, HUD 2D y controles.
 - `public/render3d.js` — render 3D con Three.js: pistas, arenas, autos, power-ups y efectos.
   El servidor sirve Three.js desde `node_modules` en `/vendor/three`, así que hace falta `npm install`.
-- `public/sfx.js` — efectos de sonido sintetizados.
+- `public/sfx.js` — efectos de sonido sintetizados, uno propio por cada power-up y anti-poder.

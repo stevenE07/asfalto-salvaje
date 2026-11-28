@@ -134,10 +134,15 @@
   #zF { right: max(16px, env(safe-area-inset-right)); bottom: max(16px, env(safe-area-inset-bottom)); width: min(27vh, 26vw, 170px); height: min(27vh, 26vw, 170px); border-radius: 50%; flex-direction: column; font-size: 42px; }
   #zF small { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; opacity: .85; }
   #zF.has { background: radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--c) 70%, #fff), color-mix(in srgb, var(--c) 70%, #000)); border-color: #fff; box-shadow: 0 0 30px color-mix(in srgb, var(--c) 60%, transparent); }
+  #zG { right: max(16px, env(safe-area-inset-right)); bottom: calc(max(16px, env(safe-area-inset-bottom)) + min(27vh, 26vw, 170px) + 12px);
+    width: min(16vh, 16vw, 104px); height: min(16vh, 16vw, 104px); border-radius: 50%; flex-direction: column; font-size: 28px; }
+  #zG small { font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; opacity: .85; }
+  #zG.has { background: radial-gradient(circle at 50% 35%, #8f5cff, #2b1150); border-color: #d9c2ff; box-shadow: 0 0 26px rgba(143,92,255,0.6); color: #fff; }
   @media (orientation: portrait) {
     #zL, #zR { width: min(30vw, 140px); height: min(22vh, 150px); }
     #zR { left: calc(max(12px, env(safe-area-inset-left)) + min(30vw, 140px) + 10px); }
     #zF { width: min(30vw, 140px); height: min(30vw, 140px); }
+    #zG { width: min(19vw, 92px); height: min(19vw, 92px); bottom: calc(max(16px, env(safe-area-inset-bottom)) + min(30vw, 140px) + 12px); }
   }
   .pill { position: fixed; left: 50%; transform: translateX(-50%); top: 70px; z-index: 4; background: rgba(10,8,20,0.85); border: 1px solid var(--line); padding: 8px 16px; border-radius: 999px; font-weight: 600; text-align: center; pointer-events: none; max-width: 92vw; }
   #rotateHint { top: auto; bottom: 50%; }
@@ -243,6 +248,10 @@
             <h3>Puntos para ganar la copa</h3>
             <div id="targets" class="chips"></div>
           </div>
+          <div>
+            <h3>Velocidad de los autos</h3>
+            <div id="speeds" class="chips"></div>
+          </div>
         </section>
       </div>
       <section>
@@ -261,7 +270,9 @@
             <li>En la compu cada uno juega con <b>su propio teclado</b>: mirá <b>⌨️ Mis teclas</b> para elegir las tuyas.</li>
             <li>La cámara sigue al que va <b>primero</b>: si te quedás fuera de la pantalla, quedás eliminado.</li>
             <li>Pegale a la <b>cola</b> de otro, medio de costado, y lo mandás al <b>trompo</b>: queda mirando para el otro lado.</li>
-            <li>Agarrá las cajas <b>?</b> y usá el power-up con el botón redondo (o ↑ / espacio): ⚡ Turbo, 🚀 Misil, 💣 Mina, 🛢️ Aceite, 🛡️ Escudo, 💥 Onda.</li>
+            <li>Agarrá las cajas amarillas <b>?</b> y usá el power-up con el botón redondo (o ↑ / espacio): ⚡ Turbo, 🚀 Misil, 💣 Mina, 🛢️ Aceite, 🛡️ Escudo, 💥 Onda, 🪝 Gancho.</li>
+            <li>El <b>🪝 gancho</b> le sale a los que van atrás: engancha al auto de adelante y te lleva hasta él.</li>
+            <li>Las cajas <b>negras</b> tienen <b>anti-poderes</b>: se los tirás al de adelante con el botón violeta (o E). 🔄 le da vuelta los controles, 🪣 le ensucia el parabrisas y 🐌 le ahoga el motor. El 🛡️ escudo los para.</li>
             <li>El último en pie gana la ronda. Puntos: 1.º 3, 2.º 2, 3.º 1.</li>
             <li>Si la ronda se alarga llega la <b>muerte súbita</b>: la pantalla se achica.</li>
           </ul>
@@ -280,6 +291,7 @@
   <div class="zone" id="zL" data-zone="l">◀</div>
   <div class="zone" id="zR" data-zone="r">▶</div>
   <div class="zone" id="zF" data-zone="f"><span id="zFi">·</span><small id="zFl"></small></div>
+  <div class="zone" id="zG" data-zone="g"><span id="zGi">·</span><small id="zGl"></small></div>
 </div>
 <div id="statusPill" class="pill hidden"></div>
 <div id="rotateHint" class="pill hidden">📱↻ Girá el celular para ver mejor</div>

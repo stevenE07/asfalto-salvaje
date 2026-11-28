@@ -2,7 +2,8 @@
 // El servidor simula; acá se interpolan las instantáneas, se dibuja y se mandan los controles.
 (() => {
   'use strict';
-  const { COLORS, ITEMS, ITEM_LIST, MODES, PHASES, F, TARGETS, MAX_PLAYERS, VIEW_W, VIEW_H, INTRO_TIME } = window.Common;
+  const { COLORS, ITEMS, ITEM_LIST, ANTIS, ANTI_LIST, SPEEDS, MODES, PHASES, F, TARGETS, MAX_PLAYERS,
+    VIEW_W, VIEW_H, WAVE_R, INTRO_TIME } = window.Common;
   const { ROAD, CURB, WALL, pointAt } = window.Tracks;
   const TRACKS = window.Tracks.TRACK_DEFS.map(window.Tracks.buildTrack);
   const ARENAS = window.Tracks.ARENA_DEFS.map(window.Tracks.buildArena);
@@ -29,7 +30,7 @@
   const S = {
     me: { id: null, tv: false, code: null },
     meta: null, world: null, snaps: [], off: null,
-    cars: new Map(), missiles: [], mines: [], oils: [], snap: null,
+    cars: new Map(), missiles: [], mines: [], oils: [], hooks: [], snap: null,
     parts: [], skids: [], waves: [], toasts: [], shake: 0,
     cam: { x: 0, y: 0, zoom: 1 }, camInit: false,
     ping: 0, dpr: 1, cssW: 0, cssH: 0, baseScale: 1,
@@ -123,10 +124,11 @@
       s0: w.kind === 'track' ? map.cum[map.startIdx] : 0,
       decor: w.kind === 'track' ? genDecor(map, w.idx) : null,
       boxes: w.boxes.map(([x, y], i) => ({ x, y, active: true, ph: i * 1.7 })),
+      abox: (w.abox || []).map(([x, y], i) => ({ x, y, active: true, ph: i * 1.3 })),
       time: 0,
     };
     S.snaps = S.snaps.filter((s) => s.w === w.id);
-    S.cars.clear(); S.parts = []; S.skids = []; S.waves = []; S.missiles = []; S.mines = []; S.oils = [];
+    S.cars.clear(); S.parts = []; S.skids = []; S.waves = []; S.missiles = []; S.mines = []; S.oils = []; S.hooks = [];
     S.camInit = false;
   }
 
@@ -172,6 +174,7 @@
     $('slots').innerHTML = html;
     $('modes').innerHTML = Object.entries(MODES).map(([k, v]) => `<button class="ghost ${m.mode === k ? 'sel' : ''}" data-cmd="mode" data-v="${k}" ${cmd ? '' : 'disabled'}>${v.icon} ${v.name}</button>`).join('');
     $('targets').innerHTML = TARGETS.map((t) => `<button class="ghost ${m.target === t ? 'sel' : ''}" data-cmd="target" data-v="${t}" ${cmd ? '' : 'disabled'} style="min-width:58px">${t}</button>`).join('');
+    $('speeds').innerHTML = SPEEDS.map((sp) => `<button class="ghost ${m.speed === sp.v ? 'sel' : ''}" data-cmd="speed" data-v="${sp.v}" ${cmd ? '' : 'disabled'}>${sp.icon} ${sp.name}</button>`).join('');
     $('modeDesc').textContent = MODES[m.mode].desc;
     const n = m.players.filter((p) => p.kind === 'bot' || p.on).length;
     const bots = m.players.filter((p) => p.kind === 'bot').length;
@@ -296,12 +299,14 @@
   // ------------------------------------------------------------------ controles
   function sendInput() { net.send({ t: 'in', l: S.input.l, r: S.input.r, b: S.input.b }); }
   function fire() { net.send({ t: 'fire' }); if (navigator.vibrate) try { navigator.vibrate(18); } catch {} }
+  function fireAnti() { net.send({ t: 'fire2' }); if (navigator.vibrate) try { navigator.vibrate(18); } catch {} }
   const zones = new Map();
   const zoneAt = (x, y) => { const el = document.elementFromPoint(x, y); const z = el && el.closest && el.closest('[data-zone]'); return z ? z.dataset.zone : null; };
   function updateTouch() {
-    let l = false, r = false, f = false;
-    for (const z of zones.values()) { if (z === 'l') l = true; else if (z === 'r') r = true; else if (z === 'f') f = true; }
-    $('zL').classList.toggle('on', l); $('zR').classList.toggle('on', r); $('zF').classList.toggle('on', f);
+    let l = false, r = false, f = false, gg = false;
+    for (const z of zones.values()) { if (z === 'l') l = true; else if (z === 'r') r = true; else if (z === 'f') f = true; else if (z === 'g') gg = true; }
+    $('zL').classList.toggle('on', l); $('zR').classList.toggle('on', r);
+    $('zF').classList.toggle('on', f); $('zG').classList.toggle('on', gg);
     if (l !== S.input.l || r !== S.input.r) {
       S.input.l = l; S.input.r = r; sendInput();
       if ((l || r) && navigator.vibrate) try { navigator.vibrate(6); } catch {}
@@ -313,12 +318,13 @@
     const z = zoneAt(e.clientX, e.clientY);
     zones.set(e.pointerId, z);
     if (z === 'f') fire();
+    else if (z === 'g') fireAnti();
     updateTouch();
   });
   ctl.addEventListener('pointermove', (e) => {
     if (!zones.has(e.pointerId)) return;
     const prev = zones.get(e.pointerId), z = zoneAt(e.clientX, e.clientY);
-    const nz = z === 'f' && prev !== 'f' ? null : z;
+    const nz = (z === 'f' || z === 'g') && prev !== z ? null : z;   // no se dispara arrastrando el dedo
     if (nz !== prev) { zones.set(e.pointerId, nz); updateTouch(); }
   });
   const release = (e) => { zones.delete(e.pointerId); updateTouch(); };
@@ -326,15 +332,19 @@
   ctl.addEventListener('contextmenu', (e) => e.preventDefault());
 
   // --- teclado: cada jugador elige sus propias teclas, en su propia compu
-  const DEF_KEYS = { l: ['ArrowLeft', 'KeyA'], r: ['ArrowRight', 'KeyD'], b: ['ArrowDown', 'KeyS'], f: ['ArrowUp', 'KeyW', 'Space'] };
-  const ACTS = ['l', 'r', 'b', 'f'];
+  const DEF_KEYS = {
+    l: ['ArrowLeft', 'KeyA'], r: ['ArrowRight', 'KeyD'], b: ['ArrowDown', 'KeyS'],
+    f: ['ArrowUp', 'KeyW', 'Space'], g: ['KeyE', 'ShiftRight'],
+  };
+  const ACTS = ['l', 'r', 'b', 'f', 'g'];
   const KEY_ACTS = [
     { id: 'l', ico: '◀', name: 'Doblar a la izquierda' },
     { id: 'r', ico: '▶', name: 'Doblar a la derecha' },
     { id: 'b', ico: '🛑', name: 'Frenar' },
     { id: 'f', ico: '💥', name: 'Usar el power-up' },
+    { id: 'g', ico: '🔄', name: 'Tirar el anti-poder' },
   ];
-  const defBinds = () => ({ l: [...DEF_KEYS.l], r: [...DEF_KEYS.r], b: [...DEF_KEYS.b], f: [...DEF_KEYS.f] });
+  const defBinds = () => ({ l: [...DEF_KEYS.l], r: [...DEF_KEYS.r], b: [...DEF_KEYS.b], f: [...DEF_KEYS.f], g: [...DEF_KEYS.g] });
   let binds = defBinds();
   try {
     const raw = JSON.parse(localStorage.getItem('as_keys') || 'null');
@@ -402,6 +412,7 @@
     if (e.repeat) return;
     keys.add(e.code);
     if (binds.f.includes(e.code)) fire();
+    if (binds.g.includes(e.code)) fireAnti();
     keyInput();
   });
   addEventListener('keyup', (e) => { keys.delete(e.code); keyInput(); });
@@ -456,7 +467,7 @@
       v.x = lerp(ca[1], cb[1], t); v.y = lerp(ca[2], cb[2], t);
       v.a = angLerp(ca[3], cb[3], t); v.steer = lerp(ca[4], cb[4], t);
       const src = t > 0.5 ? cb : ca;
-      v.f = src[5]; v.hp = src[6]; v.item = ITEM_LIST[cb[7]] || null;
+      v.f = src[5]; v.hp = src[6]; v.item = ITEM_LIST[cb[7]] || null; v.anti = ANTI_LIST[cb[8]] || null;
       v.alive = !!(v.f & F.ALIVE);
       v.color = p ? COLORS[p.color] : COLORS[0];
       v.name = p ? p.name : '?';
@@ -469,6 +480,9 @@
     S.mines = cur.n.map(([id, x, y, fast]) => ({ id, x, y, fast }));
     S.oils = cur.o.map(([id, x, y, life]) => ({ id, x, y, life, r: 48 }));
     for (let k = 0; k < W.boxes.length; k++) W.boxes[k].active = cur.b[k] === '1';
+    for (let k = 0; k < W.abox.length; k++) W.abox[k].active = (cur.ab || '')[k] === '1';
+    // la soga va de auto a auto: los busco ya interpolados para que no tiemble
+    S.hooks = (cur.h || []).map(([id, a2, b2]) => ({ id, a: S.cars.get(a2), b: S.cars.get(b2) })).filter((o) => o.a && o.b);
   }
 
   // ------------------------------------------------------------------ efectos
@@ -510,8 +524,16 @@
         SFX.pickup();
         for (let i = 0; i < 10; i++) part({ k: 'spark', x: e.x, y: e.y, vx: rand(-260, 260), vy: rand(-260, 260), life: 0.4, max: 0.4, size: 3, drag: 3, color: pick(['#ffd34d', '#ff7a1a', '#ffffff']) });
         break;
-      case 'wave': S.waves.push({ x: e.x, y: e.y, r: 20, max: 340, life: 0.45 }); SFX.wave(); S.shake = Math.max(S.shake, 0.35); break;
+      case 'wave': S.waves.push({ x: e.x, y: e.y, r: 20, max: WAVE_R, life: 0.45 }); SFX.wave(); S.shake = Math.max(S.shake, 0.35); break;
       case 'block': sparks(e.x, e.y, 16, '#7ff3ff'); SFX.block(); break;
+      case 'apick':
+        SFX.apick();
+        for (let i = 0; i < 10; i++) part({ k: 'spark', x: e.x, y: e.y, vx: rand(-260, 260), vy: rand(-260, 260), life: 0.4, max: 0.4, size: 3, drag: 3, color: pick(['#b98cff', '#6f3bd6', '#ffffff']) });
+        break;
+      case 'anti':
+        sparks(e.x, e.y, 18, '#b98cff');
+        if (e.id === S.me.id) S.shake = Math.max(S.shake, 0.3);
+        break;
       case 'sfx': if (typeof SFX[e.s] === 'function') SFX[e.s](); break;
       case 'count': SFX.count(e.n); break;
       case 'toast': addToast(e.text, e.c); break;
@@ -744,9 +766,33 @@
     });
   }
 
+  // Manchas fijas: el barro no parpadea, se queda pegado hasta que se va el efecto.
+  const MUD = (() => {
+    const r = seeded(20260127), a = [];
+    for (let i = 0; i < 16; i++) a.push([r(), r(), 0.028 + r() * 0.045, r() * TAU, 0.55 + r() * 0.8, r()]);
+    return a;
+  })();
+  function drawMud(w, h) {
+    ctx.save();
+    for (const [bx, by, br, rot, sq, tn] of MUD) {
+      ctx.fillStyle = `rgba(${46 + Math.round(tn * 26)},${30 + Math.round(tn * 18)},16,0.82)`;
+      ctx.beginPath();
+      ctx.ellipse(bx * w, by * h, br * w, br * w * sq, rot, 0, TAU);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(bx * w + br * w * 0.9, by * h + br * w * 0.6, br * w * 0.38, br * w * 0.3, rot, 0, TAU);
+      ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(40,26,14,0.18)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+  }
+
   function drawHUD(W, time) {
     const w = S.cssW, h = S.cssH, m = S.meta;
     if (!m) return;
+    const mineCar = S.cars.get(S.me.id);
+    if (mineCar && mineCar.alive && (mineCar.f & F.MUD)) drawMud(w, h);
     ctx.textBaseline = 'middle';
     const ps = m.players;
     const gap = 6;
@@ -779,6 +825,10 @@
         if (car && car.alive && car.item) {
           ctx.font = '16px system-ui'; ctx.textAlign = 'center';
           ctx.fillText(car.item === 'roll' ? pick(Object.values(ITEMS)).icon : ITEMS[car.item].icon, x + pw - 38, 23);
+        }
+        if (car && car.alive && car.anti) {
+          ctx.font = '14px system-ui'; ctx.textAlign = 'center';
+          ctx.fillText(ANTIS[car.anti].icon, x + pw - 58, 23);
         }
       }
       if (dead && car) { ctx.globalAlpha = 1; ctx.fillStyle = '#ff4d4d'; ctx.font = 'bold 18px system-ui'; ctx.textAlign = 'center'; ctx.fillText('✖', x + pw / 2, 8 + ph / 2); }
@@ -840,6 +890,14 @@
     } else { b.classList.add('has'); $('zFi').textContent = ITEMS[item].icon; $('zFl').textContent = ITEMS[item].name; }
     lastItem = item;
   }
+  let lastAnti = null;
+  function setAntiButton(anti) {
+    if (anti === lastAnti) return;
+    const b = $('zG');
+    if (!anti) { b.classList.remove('has'); $('zGi').textContent = '·'; $('zGl').textContent = ''; }
+    else { b.classList.add('has'); $('zGi').textContent = ANTIS[anti].icon; $('zGl').textContent = ANTIS[anti].name; }
+    lastAnti = anti;
+  }
   let pillText = '';
   function updateDomHud() {
     const m = S.meta, W = S.world;
@@ -850,7 +908,11 @@
       if (mine) {
         document.documentElement.style.setProperty('--c', mine.color.hex);
         setItemButton(mine.alive ? mine.item : null);
+        setAntiButton(mine.alive ? mine.anti : null);
         if (!mine.alive && (W.phase === 'race')) pill = '💥 Quedaste eliminado · mirá cómo termina';
+        else if (mine.alive && (mine.f & F.INV)) pill = '🔄 ¡Controles al revés!';
+        else if (mine.alive && (mine.f & F.MUD)) pill = '🪣 Te embarraron el parabrisas';
+        else if (mine.alive && (mine.f & F.CHOKE)) pill = '🐌 Motor ahogado';
       } else if (S.me.id && (m.phase === 'intro' || m.phase === 'race')) pill = 'Entrás en la próxima ronda · mirá la carrera 👀';
       rotate = isTouch && S.cssH > S.cssW && (m.phase === 'intro' || m.phase === 'race');
     }

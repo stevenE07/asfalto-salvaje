@@ -3,7 +3,7 @@
 import * as THREE from '/vendor/three/three.module.js';
 
 const { ROAD, CURB, WALL } = window.Tracks;
-const { F, VIEW_W, VIEW_H } = window.Common;
+const { F, VIEW_W, VIEW_H, ITEMS, ANTIS } = window.Common;
 const TAU = Math.PI * 2;
 const TILT = 1.08;            // inclinación de la cámara sobre el piso (~62°)
 const FOV = 42;
@@ -39,6 +39,34 @@ function geo(spec) {
   shared.add(g);
   return g;
 }
+// Cartelito con el emoji del poder: se dibuja una vez por icono y se reusa.
+const iconTexCache = new Map();
+function iconTexture(icon, ring) {
+  const key = icon + '|' + ring;
+  if (iconTexCache.has(key)) return iconTexCache.get(key);
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 128;
+  const c = cv.getContext('2d');
+  c.fillStyle = 'rgba(14,11,26,0.82)';
+  c.beginPath();
+  if (c.roundRect) c.roundRect(10, 10, 108, 108, 26); else c.rect(10, 10, 108, 108);
+  c.fill();
+  c.lineWidth = 7;
+  c.strokeStyle = ring;
+  c.stroke();
+  c.font = '72px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",system-ui';
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.fillStyle = '#ffffff';
+  c.fillText(icon, 64, 70);
+  const t = new THREE.CanvasTexture(cv);
+  t.anisotropy = 4;
+  iconTexCache.set(key, t);
+  return t;
+}
+const ITEM_ICONS = Object.fromEntries(Object.entries(ITEMS).map(([k, v]) => [k, v.icon]));
+const ANTI_ICONS = Object.fromEntries(Object.entries(ANTIS).map(([k, v]) => [k, v.icon]));
+
 const lam = (o) => new THREE.MeshLambertMaterial(o);
 const bas = (o) => new THREE.MeshBasicMaterial(o);
 const mesh = (spec, mat) => new THREE.Mesh(geo(spec), mat);
@@ -390,9 +418,23 @@ function makeCar() {
     u.spin.add(s);
   }
   u.spin.position.y = 44;
-  for (const k of ['shadow', 'body', 'nose', 'stripe', 'cabin', 'glass', 'spoiler', 'flame', 'beam', 'shield', 'warn', 'mine', 'spin']) g.add(u[k]);
+  // carteles flotantes: el poder a la izquierda, el anti-poder a la derecha
+  u.badges = new THREE.Group();
+  u.badges.position.y = 118;
+  u.bItem = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false }));
+  u.bAnti = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false }));
+  for (const b of [u.bItem, u.bAnti]) { b.scale.set(34, 34, 1); b.visible = false; b.renderOrder = 6; u.badges.add(b); }
+  for (const k of ['shadow', 'body', 'nose', 'stripe', 'cabin', 'glass', 'spoiler', 'flame', 'beam', 'shield', 'warn', 'mine', 'spin', 'badges']) g.add(u[k]);
   g.userData = u;
   return g;
+}
+
+// El icono tiene que mirar siempre al mismo lado aunque el auto gire.
+function setBadge(sprite, icon, ring) {
+  if (!icon) { sprite.visible = false; return; }
+  const tex = iconTexture(icon, ring);
+  if (sprite.material.map !== tex) { sprite.material.map = tex; sprite.material.needsUpdate = true; }
+  sprite.visible = true;
 }
 
 function updateCar(g, c, time, isMe) {
@@ -430,6 +472,23 @@ function updateCar(g, c, time, isMe) {
     const k = 1 + Math.sin(time * 5) * 0.05;
     u.mine.scale.set(k, 1, k);
   }
+  // carteles del poder y del anti-poder
+  const ic = c.item === 'roll' ? '❓' : (ITEM_ICONS[c.item] || null);
+  const ac = ANTI_ICONS[c.anti] || null;
+  setBadge(u.bItem, ic, '#ffd23f');
+  setBadge(u.bAnti, ac, '#9a5cf6');
+  const both = ic && ac;
+  u.bItem.position.x = both ? -19 : 0;
+  u.bAnti.position.x = both ? 19 : 0;
+  u.badges.visible = !!(ic || ac);
+  if (u.badges.visible) {
+    u.badges.rotation.y = c.a;                 // cancela el giro del auto
+    u.badges.position.y = 118 + Math.sin(time * 3 + c.x * 0.01) * 4;
+    const k = c.item === 'roll' ? 1 + Math.sin(time * 18) * 0.12 : 1;
+    u.bItem.scale.set(34 * k, 34 * k, 1);
+  }
+  // aviso de los efectos encima: el auto tiembla un toque si lo embarraron
+  if (c.f & F.CHOKE) u.flame.visible = false;
 }
 
 function makeCrate() {
@@ -440,6 +499,30 @@ function makeCrate() {
   glow.position.y = 1.2;
   g.add(box, glow);
   g.userData = { box };
+  return g;
+}
+
+function makeAntiCrate() {
+  const g = new THREE.Group();
+  const ball = mesh(['ico', 20, 0], lam({ color: 0x2a1448 }));
+  ball.position.y = 26;
+  const edge = mesh(['ico', 21.5, 0], bas({ color: 0xb98cff, wireframe: true, transparent: true, opacity: 0.85 }));
+  edge.position.y = 26;
+  const glow = mesh(['circ', 32], bas({ color: 0x9a5cf6, transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending }));
+  glow.position.y = 1.2;
+  g.add(ball, edge, glow);
+  g.userData = { ball, edge };
+  return g;
+}
+
+function makeHook() {
+  const g = new THREE.Group();
+  const rope = mesh(['box', 1, 2.5, 2.5], bas({ color: 0xd8c08a }));
+  const claw = mesh(['cyl', 1, 7, 9, 6], lam({ color: 0xbfc4cc }));
+  claw.rotation.z = -Math.PI / 2;
+  g.add(rope, claw);
+  g.position.y = 17;
+  g.userData = { rope, claw };
   return g;
 }
 
@@ -714,6 +797,8 @@ const R3D = {
     carsGroup = new THREE.Group();
     dyn.add(carsGroup);
     pools.crate = Pool(makeCrate);
+    pools.acrate = Pool(makeAntiCrate);
+    pools.hook = Pool(makeHook);
     pools.mine = Pool(makeMine);
     pools.oil = Pool(makeOil);
     pools.missile = Pool(makeMissile);
@@ -786,6 +871,24 @@ const R3D = {
         o.userData.box.position.y = 28 + bob * 6;
         o.userData.box.rotation.y = time * 1.4 + b.ph;
         o.userData.box.rotation.x = 0.3;
+      }
+      for (const b of W.abox) {
+        if (!b.active) continue;
+        const o = pools.acrate.get();
+        o.position.set(b.x, 0, b.y);
+        const bob = Math.sin(time * 3.4 + b.ph);
+        o.userData.ball.position.y = o.userData.edge.position.y = 28 + bob * 7;
+        o.userData.ball.rotation.y = o.userData.edge.rotation.y = -time * 1.1 + b.ph;
+        o.userData.edge.rotation.x = time * 0.7;
+      }
+      for (const hk of S.hooks) {
+        const o = pools.hook.get();
+        const dx = hk.b.x - hk.a.x, dz = hk.b.y - hk.a.y;
+        const len = Math.hypot(dx, dz) || 1;
+        o.position.set((hk.a.x + hk.b.x) / 2, 17, (hk.a.y + hk.b.y) / 2);
+        o.rotation.y = -Math.atan2(dz, dx);
+        o.userData.rope.scale.x = len;
+        o.userData.claw.position.x = len / 2 - 4;
       }
       for (const m of S.mines) {
         const o = pools.mine.get();

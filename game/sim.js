@@ -4,7 +4,8 @@ const Tracks = require('../shared/tracks.js');
 const Common = require('../shared/common.js');
 
 const { ROAD, CURB, WALL, project, projectGlobal, pointAt } = Tracks;
-const { COLORS, MODES, TARGETS, MAX_PLAYERS, VIEW_W, VIEW_H, CAR_R, ITEM_LIST, PHASES, F, INTRO_TIME } = Common;
+const { COLORS, MODES, TARGETS, MAX_PLAYERS, VIEW_W, VIEW_H, CAR_R, ITEM_LIST, ANTIS, ANTI_LIST, SPEEDS,
+  WAVE_R, WAVE_HIT, PHASES, F, INTRO_TIME } = Common;
 
 const TRACKS = Tracks.TRACK_DEFS.map(Tracks.buildTrack);
 const ARENAS = Tracks.ARENA_DEFS.map(Tracks.buildArena);
@@ -28,7 +29,7 @@ const r3 = (v) => Math.round(v * 1000) / 1000;
 // ------------------------------------------------------------------ partida
 function createGame() {
   return {
-    phase: 'lobby', mode: 'knockout', target: 10,
+    phase: 'lobby', mode: 'knockout', target: 10, speed: 1,
     players: [], world: null, phaseT: 0, round: 0,
     trackQueue: [], arenaIdx: 0, champion: null, roundWinner: null,
     events: [], nextId: 1, joinSeq: 0, clock: 0, countShown: 4, wid: 0, oid: 0,
@@ -41,7 +42,7 @@ function freeColor(g) {
   return 0;
 }
 function newPlayer(g, kind, name) {
-  return { id: g.nextId++, kind, name, color: freeColor(g), score: 0, lastGain: 0, lastPlace: 0, input: { l: false, r: false, b: false, fire: false }, connected: true, join: g.joinSeq++, leftAt: 0 };
+  return { id: g.nextId++, kind, name, color: freeColor(g), score: 0, lastGain: 0, lastPlace: 0, input: { l: false, r: false, b: false, fire: false, fire2: false }, connected: true, join: g.joinSeq++, leftAt: 0 };
 }
 function cleanName(n) {
   const s = String(n || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 12);
@@ -89,9 +90,10 @@ function makeCar(W, p, x, y, a) {
   const c = {
     p, color: COLORS[p.color].hex, name: p.name, x, y, a, vx: 0, vy: 0, steer: 0, alive: true,
     item: null, roll: 0, rollItem: null, turbo: 0, shield: 0, spin: 0, spinDir: 1, av: 0, invuln: 0, oilImm: 0,
+    anti: null, inv: 0, mud: 0, chk: 0,
     hp: 3, hitFlash: 0, sdT: 0, seg: 0, s: 0, prog: 0, offroad: false, warn: 0, heldT: 0, skid: false, brake: false,
-    speedMul: p.kind === 'bot' ? 0.95 : 1, fxT: 0,
-    bot: p.kind === 'bot' ? { lane: rand(-60, 60), laneT: rand(1, 3), itemT: 1, skill: rand(0.8, 1), stuckT: 0 } : null,
+    speedMul: (p.kind === 'bot' ? 0.95 : 1) * (W.speed || 1), fxT: 0,
+    bot: p.kind === 'bot' ? { lane: rand(-60, 60), laneT: rand(1, 3), itemT: 1, antiT: rand(2, 5), skill: rand(0.8, 1), stuckT: 0 } : null,
   };
   if (!W.arena) {
     const pr = projectGlobal(W.map, x, y);
@@ -106,8 +108,8 @@ function makeWorld(g, kind, idx, parts) {
   const map = kind === 'arena' ? ARENAS[idx] : TRACKS[idx];
   const arena = kind === 'arena';
   const W = {
-    id: ++g.wid, kind, idx, map, arena, items: MODES[g.mode].items,
-    cars: [], mines: [], oils: [], missiles: [], boxes: [], waves: [],
+    id: ++g.wid, kind, idx, map, arena, items: MODES[g.mode].items, speed: g.speed,
+    cars: [], mines: [], oils: [], missiles: [], boxes: [], abox: [], hooks: [], waves: [],
     time: 0, raceStart: 0, elimOrder: [], ending: 0, over: false, winner: null,
     cam: { x: 0, y: 0 }, shrink: 1, safeR: Infinity, sdOn: false, leader: null, grip: map.theme.grip,
   };
@@ -127,6 +129,13 @@ function makeWorld(g, kind, idx, parts) {
           W.boxes.push({ x: r1(pt.x + pt.nx * lane), y: r1(pt.y + pt.ny * lane), active: true, t: 0 });
         }
       }
+      // las cajas negras van salteadas entre las amarillas, más cerca del medio
+      for (let s = W.s0 + 1600; s < W.s0 + map.L - 600; s += 1400) {
+        for (const lane of [-52, 52]) {
+          const pt = pointAt(map, s);
+          W.abox.push({ x: r1(pt.x + pt.nx * lane), y: r1(pt.y + pt.ny * lane), active: true, t: 0 });
+        }
+      }
     }
     const first = pointAt(map, W.s0);
     W.cam.x = first.x; W.cam.y = first.y;
@@ -138,6 +147,9 @@ function makeWorld(g, kind, idx, parts) {
     });
     const spots = [[300, 300], [2500, 300], [300, 1500], [2500, 1500], [1000, 900], [1800, 900], [1400, 600], [1400, 1200], [1050, 450], [1750, 450], [1050, 1350], [1750, 1350]];
     for (const [x, y] of spots) W.boxes.push({ x, y, active: true, t: 0 });
+    if (W.items) for (const [x, y] of [[1400, 300], [1400, 1500], [300, 900], [2500, 900], [700, 650], [2100, 1150]]) {
+      W.abox.push({ x, y, active: true, t: 0 });
+    }
   }
   return W;
 }
@@ -175,7 +187,7 @@ function damage(g, W, c, n) {
 function eliminate(g, W, c, why) {
   if (!c.alive || W.over) return;
   if (W.cars.filter((x) => x.alive).length <= 1) { c.hp = Math.max(c.hp, 1); return; } // el último nunca muere
-  c.alive = false; c.item = null; c.roll = 0;
+  c.alive = false; c.item = null; c.roll = 0; c.anti = null; c.inv = c.mud = c.chk = 0;
   W.elimOrder.push(c);
   ev(g, { e: 'elim', id: c.p.id, x: r1(c.x), y: r1(c.y), c: c.color });
   ev(g, { e: 'toast', text: why === 'camera' ? `${c.name} quedó atrás` : `${c.name} explotó`, c: c.color });
@@ -184,13 +196,13 @@ function eliminate(g, W, c, why) {
 
 function rollItem(W, c) {
   let w;
-  if (W.arena) w = { missile: 4, mine: 3, oil: 2, shield: 2, wave: 3, turbo: 2 };
+  if (W.arena) w = { missile: 4, mine: 3, oil: 2, shield: 2, wave: 3, turbo: 2, grapple: 2 };
   else {
     const alive = W.cars.filter((x) => x.alive).sort((a, b) => b.prog - a.prog);
     const rank = alive.indexOf(c), n = alive.length;
     if (rank === 0) w = { mine: 4, oil: 4, shield: 3, wave: 1, turbo: 1, missile: 1 };
-    else if (rank < n / 2) w = { turbo: 3, missile: 3, mine: 2, oil: 2, shield: 1, wave: 2 };
-    else w = { turbo: 6, missile: 4, wave: 2, shield: 1 };
+    else if (rank < n / 2) w = { turbo: 3, missile: 3, mine: 2, oil: 2, shield: 1, wave: 2, grapple: 2 };
+    else w = { turbo: 5, missile: 3, wave: 2, shield: 1, grapple: 5 };  // el que va último se cuelga de los de adelante
   }
   const total = Object.values(w).reduce((a, b) => a + b, 0);
   let r = Math.random() * total;
@@ -220,6 +232,73 @@ function chooseMissileTarget(W, c) {
   return best;
 }
 
+// El gancho es para remontar, no para escapar: en pista se cuelga del auto más
+// adelantado al que llegue la soga, así el que viene último pega el salto grande.
+const HOOK_RANGE = 1500, HOOK_MIN = 220;   // más cerca que eso no vale la pena engancharse
+function chooseHookTarget(W, c) {
+  let best = null, score = -Infinity;
+  const fx = Math.cos(c.a), fy = Math.sin(c.a);
+  for (const o of W.cars) {
+    if (o === c || !o.alive) continue;
+    const dx = o.x - c.x, dy = o.y - c.y, d = Math.hypot(dx, dy);
+    if (d < HOOK_MIN || d > HOOK_RANGE) continue;
+    if (!W.arena) {
+      const ahead = o.prog - c.prog;
+      if (ahead <= 30) continue;             // tiene que ir adelante de verdad
+      if (ahead > score) { score = ahead; best = o; }
+    } else {
+      const cos = (dx * fx + dy * fy) / (d || 1);
+      if (cos < 0.35 || -d < score) continue; // en la arena, el más cercano de frente
+      score = -d; best = o;
+    }
+  }
+  return best;
+}
+
+// El anti-poder se le tira al de adelante; si no hay nadie adelante, al más cercano.
+function antiTarget(W, c) {
+  let ahead = null, aheadScore = Infinity, near = null, nearD = Infinity;
+  const fx = Math.cos(c.a), fy = Math.sin(c.a);
+  for (const o of W.cars) {
+    if (o === c || !o.alive) continue;
+    const dx = o.x - c.x, dy = o.y - c.y, d = Math.hypot(dx, dy);
+    if (d < nearD) { nearD = d; near = o; }
+    if (!W.arena) {
+      const gap = o.prog - c.prog;
+      if (gap > 0 && gap < aheadScore) { aheadScore = gap; ahead = o; }
+    } else if (d < aheadScore && (dx * fx + dy * fy) / (d || 1) > 0.3) { aheadScore = d; ahead = o; }
+  }
+  return ahead || near;
+}
+
+function rollAnti() {
+  const ks = Object.keys(ANTIS);
+  return ks[Math.floor(Math.random() * ks.length)];
+}
+
+function useAnti(g, W, c) {
+  const a = c.anti;
+  if (!a || !c.alive || c.spin > 0) return;
+  const t = antiTarget(W, c);
+  if (!t) return;                                  // solo en la pista: no lo gasta
+  c.anti = null;
+  const def = ANTIS[a];
+  if (t.shield > 0) {
+    t.shield = 0; t.invuln = 0.35;
+    ev(g, { e: 'block', x: r1(t.x), y: r1(t.y) });
+    ev(g, { e: 'toast', text: `${t.name} lo frenó con el escudo`, c: t.color });
+    return;
+  }
+  if (a === 'invert') t.inv = def.time;
+  else if (a === 'mud') t.mud = def.time;
+  else t.chk = def.time;
+  ev(g, { e: 'sfx', s: def.sfx });
+  ev(g, { e: 'anti', id: t.p.id, k: a, x: r1(t.x), y: r1(t.y) });
+  ev(g, { e: 'toast', text: `${c.name} ${def.desc} a ${t.name}`, c: c.color });
+  vibrate(g, t.p, [70, 50, 70, 50, 200]);
+  vibrate(g, c.p, 40);
+}
+
 function useItem(g, W, c) {
   const it = c.item;
   if (!it || !c.alive || c.spin > 0) return;
@@ -235,23 +314,36 @@ function useItem(g, W, c) {
     }
     case 'mine':
       W.mines.push({ id: ++g.oid, x: c.x - fx * 38, y: c.y - fy * 38, owner: c, arm: 0.2, ownArm: 0.9, life: W.arena ? 22 : 30 });
-      ev(g, { e: 'sfx', s: 'drop' }); break;
+      ev(g, { e: 'sfx', s: 'mine' }); break;
     case 'oil':
       W.oils.push({ id: ++g.oid, x: c.x - fx * 46, y: c.y - fy * 46, r: 48, life: 16, owner: c, ownT: 0.8 });
-      ev(g, { e: 'sfx', s: 'drop' }); break;
+      ev(g, { e: 'sfx', s: 'oil' }); break;
     case 'shield':
       c.shield = 6; ev(g, { e: 'sfx', s: 'shield' }); break;
+    case 'grapple': {
+      const t = chooseHookTarget(W, c);
+      if (!t) {                                    // nadie adelante: al menos un empujón
+        c.turbo = Math.max(c.turbo, 1);
+        ev(g, { e: 'sfx', s: 'grappleMiss' });
+        ev(g, { e: 'toast', text: `${c.name} tiró el gancho al aire`, c: c.color });
+        break;
+      }
+      W.hooks.push({ id: ++g.oid, owner: c, target: t, t: 0, life: 2, hit: false });
+      ev(g, { e: 'sfx', s: 'grapple' });
+      ev(g, { e: 'toast', text: `${c.name} se enganchó a ${t.name}`, c: c.color });
+      break;
+    }
     case 'wave': {
       W.waves.push({ x: c.x, y: c.y });
       ev(g, { e: 'wave', x: r1(c.x), y: r1(c.y) });
       for (const o of W.cars) {
         if (o === c || !o.alive) continue;
         const dx = o.x - c.x, dy = o.y - c.y, d = Math.hypot(dx, dy) || 1;
-        if (d > 340) continue;
-        const f = 280 + 520 * (1 - d / 340);
-        if (o.shield > 0 && d < 200) { hit(g, W, o, 'wave', c.x, c.y); continue; }
+        if (d > WAVE_R) continue;
+        const f = 240 + 460 * (1 - d / WAVE_R);
+        if (o.shield > 0 && d < WAVE_HIT) { hit(g, W, o, 'wave', c.x, c.y); continue; }
         o.vx += (dx / d) * f; o.vy += (dy / d) * f;
-        if (d < 200) hit(g, W, o, 'wave', c.x, c.y);
+        if (d < WAVE_HIT) hit(g, W, o, 'wave', c.x, c.y);
       }
       break;
     }
@@ -275,6 +367,7 @@ const YAW_DAMP = 0.7;          // rozamiento de guiñada
 function stepCar(g, W, c, dt) {
   const inp = c.p.input;
   let L = !!inp.l, R = !!inp.r, brake = !!inp.b;
+  if (c.inv > 0) { const t = L; L = R; R = t; }   // anti-poder: izquierda va a la derecha
   if (L && R) { brake = true; L = R = false; }
   const loose = c.spin > 0;              // sin control (trompo, aceite, misil)
   if (loose) { L = R = brake = false; c.spin -= dt; }
@@ -290,6 +383,7 @@ function stepCar(g, W, c, dt) {
   let max = MAX_SPEED * c.speedMul;
   if (W.arena) max *= 0.78;
   if (c.offroad) max *= 0.55;
+  if (c.chk > 0) max *= 0.6;                      // anti-poder: motor ahogado
   if (c.turbo > 0) { max *= 1.55; c.turbo -= dt; }
   if (brake) max *= 0.3;
   let aLon;
@@ -337,6 +431,9 @@ function stepCar(g, W, c, dt) {
   c.shield = Math.max(0, c.shield - dt);
   c.invuln = Math.max(0, c.invuln - dt);
   c.oilImm = Math.max(0, c.oilImm - dt);
+  c.inv = Math.max(0, c.inv - dt);
+  c.mud = Math.max(0, c.mud - dt);
+  c.chk = Math.max(0, c.chk - dt);
   c.hitFlash = Math.max(0, c.hitFlash - dt);
   c.fxT = Math.max(0, c.fxT - dt);
   if (c.item) c.heldT += dt;
@@ -525,6 +622,10 @@ function botThink(W, c, dt) {
       let bd = Infinity;
       for (const bx of W.boxes) if (bx.active) { const d = Math.hypot(bx.x - c.x, bx.y - c.y); if (d < bd) { bd = d; target = bx; } }
     }
+    if (!target && !c.anti) {
+      let bd = Infinity;
+      for (const bx of W.abox) if (bx.active) { const d = Math.hypot(bx.x - c.x, bx.y - c.y); if (d < bd) { bd = d; target = bx; } }
+    }
     if (!target) {
       let bd = Infinity;
       for (const o of W.cars) if (o !== c && o.alive) { const d = Math.hypot(o.x - c.x, o.y - c.y); if (d < bd) { bd = d; target = o; } }
@@ -546,6 +647,10 @@ function botThink(W, c, dt) {
     b.itemT -= dt;
     if (b.itemT <= 0 && botWantsItem(W, c)) { inp.fire = true; b.itemT = rand(0.5, 2); }
   }
+  if (c.anti) {
+    b.antiT -= dt;
+    if (b.antiT <= 0) { inp.fire2 = true; b.antiT = rand(2, 5); }
+  }
 }
 
 function botWantsItem(W, c) {
@@ -565,7 +670,8 @@ function botWantsItem(W, c) {
       { const T = W.map, j = (c.seg + 25) % T.N; return T.tx[c.seg] * T.tx[j] + T.ty[c.seg] * T.ty[j] > 0.9; }
     case 'missile': return ahead < 1100;
     case 'mine': case 'oil': return behind < 450;
-    case 'wave': return near < 190;
+    case 'wave': return near < 150;
+    case 'grapple': return !!chooseHookTarget(W, c);   // no lo tira al aire
     case 'shield': return W.missiles.some((m) => m.target === c) || Math.random() < 0.02;
   }
   return true;
@@ -580,6 +686,7 @@ function stepWorld(g, W, dt) {
     if (c.bot) botThink(W, c, dt);
     if (!live) { c.p.input.fire = false; continue; }
     if (c.p.input.fire) { c.p.input.fire = false; useItem(g, W, c); }
+    if (c.p.input.fire2) { c.p.input.fire2 = false; useAnti(g, W, c); }
     stepCar(g, W, c, dt);
     if (W.arena) {
       const imp = arenaConstrain(c, W.map, CAR_R, 0.45);
@@ -599,6 +706,46 @@ function stepWorld(g, W, dt) {
         ev(g, { e: 'pick', x: b.x, y: b.y });
         break;
       }
+    }
+  }
+
+  // cajas negras (anti-poderes)
+  for (const b of W.abox) {
+    if (!b.active) { b.t -= dt; if (b.t <= 0) b.active = true; continue; }
+    for (const c of W.cars) {
+      if (!c.alive || c.anti) continue;
+      if ((c.x - b.x) ** 2 + (c.y - b.y) ** 2 < (CAR_R + 22) ** 2) {
+        b.active = false; b.t = W.arena ? 3.5 : 4.5;
+        c.anti = rollAnti();
+        ev(g, { e: 'apick', x: b.x, y: b.y });
+        vibrate(g, c.p, 40);
+        break;
+      }
+    }
+  }
+
+  // ganchos: la soga sale, engancha y te lleva hasta el otro auto
+  for (let i = W.hooks.length - 1; i >= 0; i--) {
+    const h = W.hooks[i];
+    h.t += dt; h.life -= dt;
+    const c = h.owner, o = h.target;
+    const dx = o.x - c.x, dy = o.y - c.y, d = Math.hypot(dx, dy) || 1;
+    if (h.life <= 0 || !c.alive || !o.alive || c.spin > 0 || d > 2600) { W.hooks.splice(i, 1); continue; }
+    if (d < 110) {                                  // llegó: lo suelta con envión
+      c.turbo = Math.max(c.turbo, 0.5);
+      ev(g, { e: 'sfx', s: 'hookHit' });
+      vibrate(g, c.p, 60);
+      W.hooks.splice(i, 1); continue;
+    }
+    if (h.t > 0.18) {                               // la soga tardó en llegar
+      if (!h.hit) { h.hit = true; ev(g, { e: 'spk', x: r1(o.x), y: r1(o.y), n: 8, c: '#ffd34d' }); }
+      const nx = dx / d, ny = dy / d;
+      const want = 1300 * (c.offroad ? 0.7 : 1);
+      const k = Math.min(1, 3.4 * dt);
+      c.vx += (nx * want - c.vx) * k;
+      c.vy += (ny * want - c.vy) * k;
+      c.a = angNorm(c.a + clamp(angNorm(Math.atan2(ny, nx) - c.a), -5 * dt, 5 * dt));
+      c.av *= 0.82;
     }
   }
 
@@ -782,7 +929,7 @@ function update(g, dt, now) {
     if (g.phaseT >= INTRO_TIME) {
       g.phase = 'race'; W.raceStart = W.time;
       ev(g, { e: 'count', n: 0 });
-      for (const p of g.players) p.input.fire = false;
+      for (const p of g.players) { p.input.fire = false; p.input.fire2 = false; }
     }
   } else if (g.phase === 'roundover') {
     if (g.phaseT > 6) { if (g.champion) matchOver(g); else nextRound(g); }
@@ -795,12 +942,14 @@ function update(g, dt, now) {
 // ------------------------------------------------------------------ comandos
 function input(g, p, d) { p.input.l = !!d.l; p.input.r = !!d.r; p.input.b = !!d.b; }
 function fire(g, p) { p.input.fire = true; }
+function fireAnti(g, p) { p.input.fire2 = true; }
 function command(g, p, isTv, a, v) {
   if (a === 'color' && p) { cycleColor(g, p); return; }
   if (!isTv && vip(g) !== p) return;
   switch (a) {
     case 'mode': if (MODES[v] && g.phase === 'lobby') g.mode = v; break;
     case 'target': if (TARGETS.includes(Number(v)) && g.phase === 'lobby') g.target = Number(v); break;
+    case 'speed': if (g.phase === 'lobby' && SPEEDS.some((x) => x.v === Number(v))) g.speed = Number(v); break;
     case 'start': if (g.phase === 'lobby') startMatch(g); break;
     case 'again': if (g.phase === 'matchover') startMatch(g); break;
     case 'lobby': if (g.phase === 'matchover' || g.phase === 'roundover') goLobby(g); break;
@@ -811,24 +960,29 @@ function command(g, p, isTv, a, v) {
 }
 function setConnected(g, p, on, now) {
   p.connected = on;
-  if (!on) { p.leftAt = now; p.input = { l: false, r: false, b: false, fire: false }; }
+  if (!on) { p.leftAt = now; p.input = { l: false, r: false, b: false, fire: false, fire2: false }; }
 }
 
 // ------------------------------------------------------------------ red
 function meta(g) {
   const W = g.world, v = vip(g);
   return {
-    t: 'st', phase: g.phase, mode: g.mode, target: g.target, round: g.round, vip: v ? v.id : null,
+    t: 'st', phase: g.phase, mode: g.mode, target: g.target, speed: g.speed, round: g.round, vip: v ? v.id : null,
     players: g.players.map((p) => ({ id: p.id, name: p.name, color: p.color, kind: p.kind, on: p.connected, score: p.score, gain: p.lastGain, place: p.lastPlace })),
     roundWinner: g.roundWinner ? g.roundWinner.id : null,
     champion: g.champion ? g.champion.id : null,
     nextMap: g.phase === 'roundover' && !g.champion ? peekNextMapName(g) : null,
-    world: W ? { id: W.id, kind: W.kind, idx: W.idx, boxes: W.boxes.map((b) => [b.x, b.y]), cars: W.cars.map((c) => c.p.id) } : null,
+    world: W ? {
+      id: W.id, kind: W.kind, idx: W.idx,
+      boxes: W.boxes.map((b) => [b.x, b.y]), abox: W.abox.map((b) => [b.x, b.y]),
+      cars: W.cars.map((c) => c.p.id),
+    } : null,
   };
 }
 
 function snapshot(g) {
   const W = g.world;
+  const hooked = new Set(W.hooks.map((h) => h.owner));
   const s = {
     t: 's', w: W.id, k: r3(g.clock), ph: PHASES.indexOf(g.phase), pt: r2(g.phaseT),
     rt: g.phase === 'intro' ? 0 : r2(W.time - W.raceStart),
@@ -846,12 +1000,19 @@ function snapshot(g) {
       if (c.warn && c.alive) f |= F.WARN;
       if (c.hitFlash > 0) f |= F.FLASH;
       if (c.brake) f |= F.BRAKE;
-      return [c.p.id, r1(c.x), r1(c.y), r3(c.a), r2(c.steer), f, c.hp, ITEM_LIST.indexOf(c.roll > 0 ? 'roll' : c.item || '')];
+      if (c.inv > 0) f |= F.INV;
+      if (c.mud > 0) f |= F.MUD;
+      if (c.chk > 0) f |= F.CHOKE;
+      if (hooked.has(c)) f |= F.HOOK;
+      return [c.p.id, r1(c.x), r1(c.y), r3(c.a), r2(c.steer), f, c.hp,
+        ITEM_LIST.indexOf(c.roll > 0 ? 'roll' : c.item || ''), ANTI_LIST.indexOf(c.anti || '')];
     }),
     m: W.missiles.map((m) => [m.id, r1(m.x), r1(m.y), r2(m.a)]),
     n: W.mines.map((m) => [m.id, r1(m.x), r1(m.y), m.life < 4 ? 1 : 0]),
     o: W.oils.map((o) => [o.id, r1(o.x), r1(o.y), r2(o.life)]),
     b: W.boxes.map((b) => (b.active ? 1 : 0)).join(''),
+    ab: W.abox.map((b) => (b.active ? 1 : 0)).join(''),
+    h: W.hooks.map((h) => [h.id, h.owner.p.id, h.target.p.id]),
     e: g.events,
   };
   g.events = [];
@@ -860,5 +1021,5 @@ function snapshot(g) {
 
 module.exports = {
   DT, TRACKS, ARENAS, createGame, addHuman, addBot, removePlayer, humans, vip, participants,
-  update, input, fire, command, setConnected, meta, snapshot, startMatch, goLobby,
+  update, input, fire, fireAnti, command, setConnected, meta, snapshot, startMatch, goLobby,
 };

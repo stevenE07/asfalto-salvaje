@@ -140,6 +140,7 @@ wss.on('connection', (ws) => {
     switch (msg.t) {
       case 'in': if (p) Sim.input(g, p, msg); break;
       case 'fire': if (p) Sim.fire(g, p); break;
+      case 'fire2': if (p) Sim.fireAnti(g, p); break;
       case 'cmd': Sim.command(g, p, ws.tv, String(msg.a || ''), msg.v); flushMeta(room, false); break;
     }
   });
